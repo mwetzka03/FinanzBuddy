@@ -1,0 +1,436 @@
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { trackLoading } from '../lib/loading';
+import { devLog } from '../lib/startupDevLog';
+import type {
+  Account,
+  AccountBalanceSource,
+  BuyItem,
+  Cadence,
+  DayView,
+  FixedCost,
+  IncomeForecast,
+  IncomeForecastDueRule,
+  DebtContactDetail,
+  DebtContactSummary,
+  DebtDirection,
+  DebtSummary,
+  ExpenseGroupDetail,
+  ExpenseGroupSummary,
+  IsoDate,
+  IsoMonth,
+  LedgerTransaction,
+  MonthView,
+  NewsArticle,
+  StockNewsListResponse,
+  VariableCost,
+  VariableCostDetail,
+  IncomeForecastDetail,
+  StockPortfolioSummary,
+  StockSuggestion,
+  StockPositionDetail,
+  StockChart,
+  StockChartRange,
+} from '../lib/types';
+
+function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  return trackLoading(async () => {
+    const started = performance.now();
+    devLog(`→ ${cmd}`, 'info', 'backend');
+    try {
+      const result = await tauriInvoke<T>(cmd, args);
+      const ms = Math.round(performance.now() - started);
+      devLog(`✓ ${cmd} (${ms} ms)`, 'ok', 'backend');
+      return result;
+    } catch (error) {
+      const ms = Math.round(performance.now() - started);
+      const message = error instanceof Error ? error.message : String(error);
+      devLog(`✗ ${cmd}: ${message} (${ms} ms)`, 'error', 'backend');
+      throw error;
+    }
+  });
+}
+
+export async function listAccounts(): Promise<Account[]> {
+  return await invoke('list_accounts');
+}
+
+export async function createAccount(input: {
+  name: string;
+  isLiquid: boolean;
+  balanceSource?: AccountBalanceSource;
+}): Promise<void> {
+  await invoke('create_account', {
+    input: {
+      name: input.name,
+      isLiquid: input.isLiquid,
+      balanceSource: input.balanceSource ?? 'ledger',
+    },
+  });
+}
+
+export async function updateAccount(input: { id: string; name: string }): Promise<void> {
+  await invoke('update_account', { input });
+}
+
+export async function setMainAccount(id: string): Promise<void> {
+  await invoke('set_main_account', { id });
+}
+
+export async function setAccountLiquid(input: { id: string; isLiquid: boolean }): Promise<void> {
+  await invoke('set_account_liquid', { id: input.id, isLiquid: input.isLiquid });
+}
+
+export async function listLedgerTransactions(input: {
+  accountId?: string;
+  start?: IsoDate;
+  end?: IsoDate;
+}): Promise<LedgerTransaction[]> {
+  return await invoke('list_ledger_transactions', {
+    accountId: input.accountId ?? null,
+    start: input.start ?? null,
+    end: input.end ?? null,
+  });
+}
+
+export async function createLedgerTransaction(input: {
+  date: IsoDate;
+  amountCents: number;
+  accountId: string;
+  kind: string;
+  title: string;
+  notes: string | null;
+  variableCostId?: string | null;
+  icon?: string;
+  color?: string;
+}): Promise<void> {
+  await invoke('create_ledger_transaction', { input });
+}
+
+export async function updateLedgerTransaction(input: {
+  id: string;
+  date: IsoDate;
+  amountCents: number;
+  kind: string;
+  title: string;
+  notes: string | null;
+  variableCostId?: string | null;
+  icon?: string;
+  color?: string;
+}): Promise<void> {
+  await invoke('update_ledger_transaction', { input });
+}
+
+export async function deleteLedgerTransaction(id: string): Promise<void> {
+  await invoke('delete_ledger_transaction', { id });
+}
+
+export async function createTransfer(input: {
+  date: IsoDate;
+  amountCents: number;
+  fromAccountId: string;
+  toAccountId: string;
+  title: string;
+  notes: string | null;
+}): Promise<void> {
+  await invoke('create_transfer', { input });
+}
+
+export async function deleteTransfer(id: string): Promise<void> {
+  await invoke('delete_transfer', { id });
+}
+
+export async function getDayView(date: IsoDate, accountId?: string | null): Promise<DayView> {
+  return await invoke('get_day_view', { date, accountId: accountId ?? null });
+}
+
+export async function listFixedCosts(): Promise<FixedCost[]> {
+  return await invoke('list_fixed_costs');
+}
+
+export async function createFixedCost(input: Omit<FixedCost, 'id'>): Promise<void> {
+  await invoke('create_fixed_cost', { input });
+}
+
+export async function updateFixedCost(input: FixedCost): Promise<void> {
+  await invoke('update_fixed_cost', { input });
+}
+
+export async function deleteFixedCost(id: string): Promise<void> {
+  await invoke('delete_fixed_cost', { id });
+}
+
+export async function previewFixedCost(id: string): Promise<IsoDate[]> {
+  return await invoke('preview_fixed_cost', { id });
+}
+
+export async function listBuyItems(): Promise<BuyItem[]> {
+  return await invoke('list_buy_items');
+}
+
+export async function createBuyItem(input: {
+  name: string;
+  description: string | null;
+  amountCents: number;
+  plannedMonth: IsoMonth | null;
+  icon?: string;
+  color?: string;
+}): Promise<void> {
+  await invoke('create_buy_item', { input });
+}
+
+export async function updateBuyItem(input: {
+  id: string;
+  name: string;
+  description: string | null;
+  amountCents: number;
+  plannedMonth: IsoMonth | null;
+  icon?: string;
+  color?: string;
+}): Promise<void> {
+  await invoke('update_buy_item', { input });
+}
+
+export async function applyBuyItem(id: string): Promise<void> {
+  await invoke('apply_buy_item', { input: { id } });
+}
+
+export async function unapplyBuyItem(id: string): Promise<void> {
+  await invoke('unapply_buy_item', { id });
+}
+
+export async function deleteBuyItem(id: string): Promise<void> {
+  await invoke('delete_buy_item', { id });
+}
+
+export async function listIncomeForecasts(): Promise<IncomeForecast[]> {
+  return await invoke('list_income_forecasts');
+}
+
+export async function createIncomeForecast(input: {
+  name: string;
+  amountCents: number;
+  cadence: Cadence;
+  firstChargeDate: IsoDate;
+  dueRule: IncomeForecastDueRule;
+  dayOfMonth: number | null;
+  endChargeDate: IsoDate | null;
+}): Promise<void> {
+  await invoke('create_income_forecast', { input });
+}
+
+export async function updateIncomeForecast(input: {
+  id: string;
+  name: string;
+  amountCents: number;
+  cadence: Cadence;
+  firstChargeDate: IsoDate;
+  dueRule: IncomeForecastDueRule;
+  dayOfMonth: number | null;
+  endChargeDate: IsoDate | null;
+  active: boolean;
+}): Promise<void> {
+  await invoke('update_income_forecast', { input });
+}
+
+export async function previewIncomeForecast(id: string): Promise<IsoDate[]> {
+  return await invoke('preview_income_forecast', { id });
+}
+
+export async function deleteIncomeForecast(id: string): Promise<void> {
+  await invoke('delete_income_forecast', { id });
+}
+
+export async function getIncomeForecastDetail(id: string): Promise<IncomeForecastDetail> {
+  return await invoke('get_income_forecast_detail', { id });
+}
+
+export async function setIncomeForecastActual(input: {
+  id: string;
+  occurrenceDate: IsoDate;
+  amountCents: number | null;
+}): Promise<void> {
+  await invoke('set_income_forecast_actual', { input });
+}
+
+export async function listIncomeForecastOccurrences(id: string): Promise<IsoDate[]> {
+  return await invoke('list_income_forecast_occurrences', { id });
+}
+
+export async function getMonthView(month: IsoMonth, accountId?: string | null): Promise<MonthView> {
+  return await invoke('get_month_view', { month, accountId: accountId ?? null });
+}
+
+export async function listVariableCosts(): Promise<VariableCost[]> {
+  return await invoke('list_variable_costs');
+}
+
+export async function getVariableCostDetail(id: string): Promise<VariableCostDetail> {
+  return await invoke('get_variable_cost_detail', { id });
+}
+
+export async function createVariableCost(input: {
+  name: string;
+  amountCents: number;
+  notes: string | null;
+  icon?: string;
+  color?: string;
+}): Promise<void> {
+  await invoke('create_variable_cost', { input });
+}
+
+export async function updateVariableCost(input: {
+  id: string;
+  name: string;
+  amountCents: number;
+  notes: string | null;
+  icon?: string;
+  color?: string;
+}): Promise<void> {
+  await invoke('update_variable_cost', { input });
+}
+
+export async function setVariableCostActual(input: {
+  id: string;
+  month: IsoMonth;
+  amountCents: number | null;
+}): Promise<void> {
+  await invoke('set_variable_cost_actual', { input });
+}
+
+export async function deleteVariableCost(id: string): Promise<void> {
+  await invoke('delete_variable_cost', { id });
+}
+
+export async function listExpenseGroups(): Promise<ExpenseGroupSummary[]> {
+  return await invoke('list_expense_groups');
+}
+
+export async function getExpenseGroup(id: string): Promise<ExpenseGroupDetail> {
+  return await invoke('get_expense_group', { id });
+}
+
+export async function createExpenseGroup(input: {
+  name: string;
+  date: IsoDate | null;
+  notes: string | null;
+  lines: { name: string; amountCents: number }[];
+}): Promise<string> {
+  return await invoke('create_expense_group', { input });
+}
+
+export async function updateExpenseGroup(input: {
+  id: string;
+  name: string;
+  date: IsoDate | null;
+  notes: string | null;
+  lines: { id?: string; name: string; amountCents: number }[];
+}): Promise<void> {
+  await invoke('update_expense_group', { input });
+}
+
+export async function deleteExpenseGroup(id: string): Promise<void> {
+  await invoke('delete_expense_group', { id });
+}
+
+export async function listDebtContacts(): Promise<DebtContactSummary[]> {
+  return await invoke('list_debt_contacts');
+}
+
+export async function getDebtContact(id: string): Promise<DebtContactDetail> {
+  return await invoke('get_debt_contact', { id });
+}
+
+export async function getDebtSummary(): Promise<DebtSummary> {
+  return await invoke('get_debt_summary');
+}
+
+export async function createDebtContact(input: { name: string; notes: string | null }): Promise<string> {
+  return await invoke('create_debt_contact', { input });
+}
+
+export async function updateDebtContact(input: { id: string; name: string; notes: string | null }): Promise<void> {
+  await invoke('update_debt_contact', { input });
+}
+
+export async function deleteDebtContact(id: string): Promise<void> {
+  await invoke('delete_debt_contact', { id });
+}
+
+export async function createDebtTransaction(input: {
+  contactId: string;
+  date: IsoDate;
+  amountCents: number;
+  direction: DebtDirection;
+  title: string | null;
+  notes: string | null;
+}): Promise<void> {
+  await invoke('create_debt_transaction', { input });
+}
+
+export async function updateDebtTransaction(input: {
+  id: string;
+  date: IsoDate;
+  amountCents: number;
+  direction: DebtDirection;
+  title: string | null;
+  notes: string | null;
+}): Promise<void> {
+  await invoke('update_debt_transaction', { input });
+}
+
+export async function deleteDebtTransaction(id: string): Promise<void> {
+  await invoke('delete_debt_transaction', { id });
+}
+
+export async function listStockPortfolio(depotAccountId?: string | null): Promise<StockPortfolioSummary> {
+  return await invoke('list_stock_portfolio', { depotAccountId: depotAccountId || null });
+}
+
+export async function searchStockSuggestions(
+  query: string,
+  mode: 'name' | 'isin' = 'name',
+): Promise<StockSuggestion[]> {
+  return await invoke('search_stock_suggestions', { query, mode });
+}
+
+export async function createStockHolding(input: {
+  name: string;
+  symbol: string;
+  buyDate: IsoDate;
+  buyPriceCents: number;
+  shares: number;
+  currency?: string;
+  depotAccountId?: string | null;
+  paymentAccountId?: string | null;
+  isTransfer?: boolean;
+}): Promise<void> {
+  await invoke('create_stock_holding', { input });
+}
+
+export async function deleteStockHolding(id: string): Promise<void> {
+  await invoke('delete_stock_holding', { id });
+}
+
+export async function getStockPositionDetail(id: string): Promise<StockPositionDetail> {
+  return await invoke('get_stock_position_detail', { id });
+}
+
+export async function getStockChart(symbol: string, range: StockChartRange): Promise<StockChart> {
+  return await invoke('get_stock_chart', { symbol, range });
+}
+
+export async function deleteStockLot(id: string): Promise<void> {
+  await invoke('delete_stock_lot', { id });
+}
+
+export async function listStockNews(depotAccountId?: string | null): Promise<StockNewsListResponse> {
+  return await invoke('list_stock_news', { depotAccountId: depotAccountId ?? null });
+}
+
+export async function refreshStockNews(depotAccountId?: string | null): Promise<StockNewsListResponse> {
+  return await invoke('refresh_stock_news', { depotAccountId: depotAccountId ?? null });
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  await invoke('open_external_url', { url });
+}

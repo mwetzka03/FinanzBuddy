@@ -1,0 +1,34 @@
+{
+  "name": "finanzbuddy",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:app": "tauri dev",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "icon": "tauri icon",
+    "build:app": "tauri build",
+    "build:win": "powershell -ExecutionPolicy Bypass -File scripts/build-app.ps1",
+    "dev:win": "powershell -ExecutionPolicy Bypass -File scripts/dev-app.ps1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "lottie-react": "^2.4.1",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.6"
+  }
+}

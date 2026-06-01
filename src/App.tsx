@@ -1,0 +1,120 @@
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { devLog } from './lib/startupDevLog';
+import { isDeveloperModeEnabled } from './lib/developerMode';
+import { AppTopBar } from './components/layout/AppTopBar';
+import { LoadingOverlay } from './components/layout/LoadingOverlay';import { AccountsPage } from './pages/AccountsPage';
+
+import { BuyListPage } from './pages/BuyListPage';
+
+import { DashboardPage } from './pages/DashboardPage';
+
+import { DebtDetailPage } from './pages/DebtDetailPage';
+
+import { DebtsPage } from './pages/DebtsPage';
+
+import { ExpenseGroupDetailPage } from './pages/ExpenseGroupDetailPage';
+
+import { ExpenseGroupsPage } from './pages/ExpenseGroupsPage';
+
+import { FixedCostsPage } from './pages/FixedCostsPage';
+
+import { IncomeForecastDetailPage } from './pages/IncomeForecastDetailPage';
+
+import { IncomePage } from './pages/IncomePage';
+
+import { StockDetailPage } from './pages/StockDetailPage';
+
+import { StockNewsPage } from './pages/StockNewsPage';
+
+import { StocksPage } from './pages/StocksPage';
+
+import { StocksLayout } from './components/stocks/StocksLayout';
+
+import { TransactionsPage } from './pages/TransactionsPage';
+
+import { VariableCostDetailPage } from './pages/VariableCostDetailPage';
+
+import { VariableCostsPage } from './pages/VariableCostsPage';
+import { SettingsPage } from './pages/SettingsPage';
+
+
+
+export function App() {
+
+  const location = useLocation();
+
+  useEffect(() => {
+    if (isDeveloperModeEnabled()) {
+      devLog('FinanzBuddy gestartet', 'ok', 'app');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isDeveloperModeEnabled()) {
+      devLog(`Route aktiv: ${location.pathname}`, 'info', 'navigation');
+    }
+  }, [location.pathname]);
+
+  return (
+
+    <div className="fh-app">
+
+      <AppTopBar />
+
+      <main className="fh-main fh-main-with-overlay">
+
+        <LoadingOverlay />
+
+        <Routes>
+
+          <Route path="/" element={<DashboardPage />} />
+
+          <Route path="/accounts" element={<AccountsPage />} />
+
+          <Route path="/transaktionen" element={<TransactionsPage />} />
+
+          <Route path="/transaktionen/prognose/:id" element={<IncomeForecastDetailPage />} />
+
+          <Route path="/fixkosten" element={<FixedCostsPage />} />
+
+          <Route path="/variable-kosten" element={<VariableCostsPage />} />
+
+          <Route path="/variable-kosten/:id" element={<VariableCostDetailPage />} />
+
+          <Route path="/buy-liste" element={<BuyListPage />} />
+
+          <Route path="/einnahmen/prognose/:id" element={<IncomeForecastDetailPage />} />
+
+          <Route path="/einnahmen/prognose" element={<IncomePage />} />
+
+          <Route path="/einnahmen" element={<IncomePage />} />
+
+          <Route path="/prognosen" element={<IncomePage />} />
+
+          <Route path="/aktien" element={<StocksLayout />}>
+            <Route index element={<StocksPage />} />
+            <Route path="news" element={<StockNewsPage />} />
+            <Route path=":id" element={<StockDetailPage />} />
+          </Route>
+
+          <Route path="/ausgabengruppen" element={<ExpenseGroupsPage />} />
+
+          <Route path="/ausgabengruppen/:id" element={<ExpenseGroupDetailPage />} />
+
+          <Route path="/schulden" element={<DebtsPage />} />
+
+          <Route path="/schulden/:id" element={<DebtDetailPage />} />
+
+          <Route path="/settings" element={<SettingsPage />} />
+
+        </Routes>
+
+      </main>
+
+    </div>
+
+  );
+
+}
+
