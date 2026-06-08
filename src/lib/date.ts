@@ -1,4 +1,4 @@
-import type { IsoDate, IsoMonth } from './types';
+import type { IsoDate, IsoMonth, MonthView } from './types';
 
 export function isoToday(): IsoDate {
   const d = new Date();
@@ -37,6 +37,15 @@ export function formatDisplayDate(iso: IsoDate | string | null | undefined): str
   return `${d.padStart(2, '0')}.${m.padStart(2, '0')}.${y}`;
 }
 
+export function formatDisplayPeriodRange(start: IsoDate, end: IsoDate, locale: string): string {
+  const startLabel = formatDisplayDate(start);
+  const endLabel = formatDisplayDate(end);
+  if (locale.startsWith('de')) {
+    return `${startLabel} – ${endLabel}`;
+  }
+  return `${startLabel} – ${endLabel}`;
+}
+
 /** RFC3339 / ISO-Zeitstempel → DD.MM.YYYY, HH:MM */
 export function formatDisplayDateTime(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -67,6 +76,17 @@ export function formatDisplayMonthLong(isoMonth: IsoMonth | string, locale: 'de'
   }).format(date);
 }
 
+export function dashboardPeriodLabel(
+  view: MonthView | null | undefined,
+  month: IsoMonth,
+  locale: string,
+): string {
+  if (view?.periodMode === 'since_last_salary' && view.periodStart && view.periodEnd) {
+    return formatDisplayPeriodRange(view.periodStart, view.periodEnd, locale);
+  }
+  return formatDisplayMonthLong(month, locale as 'de' | 'en');
+}
+
 export function isoToMonth(iso: IsoDate): IsoMonth {
   return iso.slice(0, 7) as IsoMonth;
 }
@@ -84,6 +104,10 @@ export function dayAdd(iso: IsoDate, deltaDays: number): IsoDate {
   const dt = new Date(y, m - 1, d);
   dt.setDate(dt.getDate() + deltaDays);
   return toIsoDate(dt);
+}
+
+export function dayBefore(iso: IsoDate): IsoDate {
+  return dayAdd(iso, -1);
 }
 
 /** Monat abgeschlossen (heute liegt nach dem letzten Kalendertag). */

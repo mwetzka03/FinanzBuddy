@@ -82,7 +82,7 @@ export function BuyListPage() {
             </div>
             <div style={ui.thName}>{t('common.name')}</div>
             <ThAmount col="cost">{t('common.amount')}</ThAmount>
-            <div>{t('common.month')}</div>
+            <div style={ui.thMono}>{t('common.month')}</div>
             <div />
           </div>
           {rows.length === 0 ? (

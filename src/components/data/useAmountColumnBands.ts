@@ -26,12 +26,14 @@ export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
       const seenCols = new Set<string>();
       const next: AmountBandRect[] = [];
 
-      tableEl.querySelectorAll<HTMLElement>('[data-amount-col]').forEach((marker) => {
+      tableEl.querySelectorAll<HTMLElement>('[data-amount-col]:not([data-amount-header])').forEach((marker) => {
         const colIndex = marker.dataset.amountCol;
         if (!colIndex || seenCols.has(colIndex)) return;
         seenCols.add(colIndex);
 
-        const cells = tableEl.querySelectorAll<HTMLElement>(`[data-amount-col="${colIndex}"]`);
+        const cells = tableEl.querySelectorAll<HTMLElement>(
+          `[data-amount-col="${colIndex}"]:not([data-amount-header])`,
+        );
         if (cells.length === 0) return;
 
         let minLeft = Infinity;

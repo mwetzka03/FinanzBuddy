@@ -4,6 +4,7 @@ import { devLog } from '../lib/startupDevLog';
 import type {
   Account,
   AccountBalanceSource,
+  AccountKind,
   BuyItem,
   Cadence,
   DayView,
@@ -30,6 +31,13 @@ import type {
   StockPositionDetail,
   StockChart,
   StockChartRange,
+  BankImportResult,
+  BankImportPreview,
+  ChildBalanceInput,
+  PrimaryIncomeImportInput,
+  DashboardPeriodMode,
+  DashboardSettings,
+  DataBackupResult,
 } from '../lib/types';
 
 function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -57,18 +65,29 @@ export async function listAccounts(): Promise<Account[]> {
 export async function createAccount(input: {
   name: string;
   isLiquid: boolean;
-  balanceSource?: AccountBalanceSource;
+  accountKind?: AccountKind;
+  parentAccountId?: string | null;
+  iban?: string | null;
 }): Promise<void> {
   await invoke('create_account', {
     input: {
       name: input.name,
       isLiquid: input.isLiquid,
-      balanceSource: input.balanceSource ?? 'ledger',
+      accountKind: input.accountKind ?? 'standard',
+      parentAccountId: input.parentAccountId ?? null,
+      iban: input.iban ?? null,
     },
   });
 }
 
-export async function updateAccount(input: { id: string; name: string }): Promise<void> {
+export async function updateAccount(input: {
+  id: string;
+  name: string;
+  isLiquid: boolean;
+  iban?: string | null;
+  accountKind?: AccountKind;
+  parentAccountId?: string | null;
+}): Promise<void> {
   await invoke('update_account', { input });
 }
 
@@ -100,6 +119,7 @@ export async function createLedgerTransaction(input: {
   title: string;
   notes: string | null;
   variableCostId?: string | null;
+  fixedCostId?: string | null;
   icon?: string;
   color?: string;
 }): Promise<void> {
@@ -114,6 +134,7 @@ export async function updateLedgerTransaction(input: {
   title: string;
   notes: string | null;
   variableCostId?: string | null;
+  fixedCostId?: string | null;
   icon?: string;
   color?: string;
 }): Promise<void> {
@@ -137,6 +158,46 @@ export async function createTransfer(input: {
 
 export async function deleteTransfer(id: string): Promise<void> {
   await invoke('delete_transfer', { id });
+}
+
+export async function convertTransferToLedger(input: {
+  id: string;
+  date: IsoDate;
+  amountCents: number;
+  accountId: string;
+  kind: string;
+  title: string;
+  notes: string | null;
+  variableCostId?: string | null;
+  fixedCostId?: string | null;
+  icon?: string;
+  color?: string;
+}): Promise<void> {
+  await invoke('convert_transfer_to_ledger', { input });
+}
+
+export async function convertLedgerToTransfer(input: {
+  id: string;
+  date: IsoDate;
+  amountCents: number;
+  fromAccountId: string;
+  toAccountId: string;
+  title: string;
+  notes: string | null;
+}): Promise<void> {
+  await invoke('convert_ledger_to_transfer', { input });
+}
+
+export async function updateTransfer(input: {
+  id: string;
+  date: IsoDate;
+  amountCents: number;
+  fromAccountId: string;
+  toAccountId: string;
+  title: string;
+  notes: string | null;
+}): Promise<void> {
+  await invoke('update_transfer', { input });
 }
 
 export async function getDayView(date: IsoDate, accountId?: string | null): Promise<DayView> {
@@ -214,6 +275,7 @@ export async function createIncomeForecast(input: {
   dueRule: IncomeForecastDueRule;
   dayOfMonth: number | null;
   endChargeDate: IsoDate | null;
+  accountId?: string;
 }): Promise<void> {
   await invoke('create_income_forecast', { input });
 }
@@ -228,8 +290,17 @@ export async function updateIncomeForecast(input: {
   dayOfMonth: number | null;
   endChargeDate: IsoDate | null;
   active: boolean;
+  accountId?: string;
 }): Promise<void> {
   await invoke('update_income_forecast', { input });
+}
+
+export async function linkLedgerToIncomeForecast(input: {
+  ledgerTransactionId: string;
+  forecastId: string;
+  occurrenceDate: IsoDate;
+}): Promise<void> {
+  await invoke('link_ledger_to_income_forecast', { input });
 }
 
 export async function previewIncomeForecast(id: string): Promise<IsoDate[]> {
@@ -256,8 +327,24 @@ export async function listIncomeForecastOccurrences(id: string): Promise<IsoDate
   return await invoke('list_income_forecast_occurrences', { id });
 }
 
-export async function getMonthView(month: IsoMonth, accountId?: string | null): Promise<MonthView> {
-  return await invoke('get_month_view', { month, accountId: accountId ?? null });
+export async function listDashboardPeriods(): Promise<import('../lib/types').DashboardPeriodNavItem[]> {
+  return await invoke('list_dashboard_periods');
+}
+
+export async function getMonthView(
+  month: IsoMonth,
+  accountId?: string | null,
+  periodStart?: IsoDate | null,
+): Promise<MonthView> {
+  return await invoke('get_month_view', {
+    month,
+    accountId: accountId ?? null,
+    periodStart: periodStart ?? null,
+  });
+}
+
+export async function refreshDashboardCache(): Promise<void> {
+  await invoke('refresh_dashboard_cache');
 }
 
 export async function listVariableCosts(): Promise<VariableCost[]> {
@@ -274,6 +361,7 @@ export async function createVariableCost(input: {
   notes: string | null;
   icon?: string;
   color?: string;
+  accountId?: string;
 }): Promise<void> {
   await invoke('create_variable_cost', { input });
 }
@@ -285,6 +373,7 @@ export async function updateVariableCost(input: {
   notes: string | null;
   icon?: string;
   color?: string;
+  accountId?: string;
 }): Promise<void> {
   await invoke('update_variable_cost', { input });
 }
@@ -433,4 +522,77 @@ export async function refreshStockNews(depotAccountId?: string | null): Promise<
 
 export async function openExternalUrl(url: string): Promise<void> {
   await invoke('open_external_url', { url });
+}
+
+export async function previewBankExport(filePath: string): Promise<BankImportPreview> {
+  return await invoke('preview_bank_export', { filePath });
+}
+
+export async function importBankExport(input: {
+  filePath: string;
+  accountId: string;
+  currentBalanceCents?: number | null;
+  balanceAsOfDate?: string | null;
+  childBalances?: ChildBalanceInput[] | null;
+  primaryIncome?: PrimaryIncomeImportInput | null;
+}): Promise<BankImportResult> {
+  return await invoke('import_bank_export', {
+    filePath: input.filePath,
+    accountId: input.accountId,
+    currentBalanceCents: input.currentBalanceCents ?? null,
+    balanceAsOfDate: input.balanceAsOfDate ?? null,
+    childBalances: input.childBalances ?? null,
+    primaryIncome: input.primaryIncome ?? null,
+  });
+}
+
+export async function clearAllTransactions(): Promise<void> {
+  await invoke('clear_all_transactions');
+}
+
+export async function resetAllUserData(): Promise<void> {
+  await invoke('reset_all_user_data');
+}
+
+export async function getSetupState(): Promise<{ completed: boolean; mode: 'manual' | 'bank_import' | null }> {
+  return await invoke('get_setup_state');
+}
+
+export async function completeSetup(mode: 'manual' | 'bank_import'): Promise<void> {
+  await invoke('complete_setup', { mode });
+}
+
+export async function setAccountOpeningBalance(
+  accountId: string,
+  amountCents: number,
+  asOfDate: IsoDate,
+): Promise<void> {
+  await invoke('set_account_opening_balance', { accountId, amountCents, asOfDate });
+}
+
+export async function exportUserData(filePath: string): Promise<DataBackupResult> {
+  return await invoke('export_user_data', { filePath });
+}
+
+export async function importUserData(filePath: string): Promise<DataBackupResult> {
+  return await invoke('import_user_data', { filePath });
+}
+
+export async function getDashboardSettings(): Promise<DashboardSettings> {
+  return await invoke('get_dashboard_settings');
+}
+
+export async function setDashboardPeriodMode(mode: DashboardPeriodMode): Promise<void> {
+  await invoke('set_dashboard_period_mode', { mode });
+}
+
+export async function setTimeframeConfig(
+  isTimeframeMonth: boolean,
+  incomeDate: number,
+): Promise<void> {
+  await invoke('set_timeframe_config', { isTimeframeMonth, incomeDate });
+}
+
+export async function setPrimaryIncomeForecast(forecastId: string | null): Promise<void> {
+  await invoke('set_primary_income_forecast', { forecastId });
 }

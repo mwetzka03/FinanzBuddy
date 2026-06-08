@@ -1,9 +1,13 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { devLog } from './lib/startupDevLog';
 import { isDeveloperModeEnabled } from './lib/developerMode';
+import { useCalcLogBridge } from './lib/calcLogBridge';
 import { AppTopBar } from './components/layout/AppTopBar';
-import { LoadingOverlay } from './components/layout/LoadingOverlay';import { AccountsPage } from './pages/AccountsPage';
+import { LoadingOverlay } from './components/layout/LoadingOverlay';
+import { DeveloperLogDock } from './components/common/DeveloperLogDock';
+import { OnboardingOverlay } from './components/onboarding/OnboardingOverlay';
+import { getSetupState } from './tauri/api';
 
 import { BuyListPage } from './pages/BuyListPage';
 
@@ -43,78 +47,104 @@ import { SettingsPage } from './pages/SettingsPage';
 export function App() {
 
   const location = useLocation();
+  const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
+
+  useCalcLogBridge();
 
   useEffect(() => {
-    if (isDeveloperModeEnabled()) {
-      devLog('FinanzBuddy gestartet', 'ok', 'app');
-    }
+    getSetupState()
+      .then((s) => setSetupRequired(!s.completed))
+      .catch(() => setSetupRequired(false));
   }, []);
 
   useEffect(() => {
-    if (isDeveloperModeEnabled()) {
-      devLog(`Route aktiv: ${location.pathname}`, 'info', 'navigation');
+    if (!setupRequired && isDeveloperModeEnabled()) {
+      devLog('FinanzBuddy gestartet', 'ok', 'app');
     }
-  }, [location.pathname]);
+  }, [setupRequired]);
+
+  useEffect(() => {
+    if (setupRequired || !isDeveloperModeEnabled()) return;
+    devLog(`Route aktiv: ${location.pathname}`, 'info', 'navigation');
+  }, [location.pathname, setupRequired]);
 
   return (
 
     <div className="fh-app">
 
-      <AppTopBar />
+      {setupRequired === true ? (
+        <>
+          <div className="fh-setup-backdrop" aria-hidden="true">
+            <div className="fh-setup-backdrop-skeleton" />
+          </div>
+          <OnboardingOverlay onComplete={() => setSetupRequired(false)} />
+        </>
+      ) : null}
 
-      <main className="fh-main fh-main-with-overlay">
+      {setupRequired === false ? (
+        <>
+          <AppTopBar />
 
-        <LoadingOverlay />
+          <main className="fh-main fh-main-with-overlay">
 
-        <Routes>
+            <LoadingOverlay />
 
-          <Route path="/" element={<DashboardPage />} />
+            <Routes>
 
-          <Route path="/accounts" element={<AccountsPage />} />
+              <Route path="/" element={<DashboardPage />} />
 
-          <Route path="/transaktionen" element={<TransactionsPage />} />
+              <Route path="/accounts" element={<Navigate to="/settings" replace />} />
 
-          <Route path="/transaktionen/prognose/:id" element={<IncomeForecastDetailPage />} />
+              <Route path="/transaktionen" element={<TransactionsPage />} />
 
-          <Route path="/fixkosten" element={<FixedCostsPage />} />
+              <Route path="/transaktionen/prognose/:id" element={<IncomeForecastDetailPage />} />
 
-          <Route path="/variable-kosten" element={<VariableCostsPage />} />
+              <Route path="/fixkosten" element={<FixedCostsPage />} />
 
-          <Route path="/variable-kosten/:id" element={<VariableCostDetailPage />} />
+              <Route path="/variable-kosten" element={<VariableCostsPage />} />
 
-          <Route path="/buy-liste" element={<BuyListPage />} />
+              <Route path="/variable-kosten/:id" element={<VariableCostDetailPage />} />
 
-          <Route path="/einnahmen/prognose/:id" element={<IncomeForecastDetailPage />} />
+              <Route path="/buy-liste" element={<BuyListPage />} />
 
-          <Route path="/einnahmen/prognose" element={<IncomePage />} />
+              <Route path="/einnahmen/prognose/:id" element={<IncomeForecastDetailPage />} />
 
-          <Route path="/einnahmen" element={<IncomePage />} />
+              <Route path="/einnahmen/prognose" element={<IncomePage />} />
 
-          <Route path="/prognosen" element={<IncomePage />} />
+              <Route path="/einnahmen" element={<IncomePage />} />
 
-          <Route path="/aktien" element={<StocksLayout />}>
-            <Route index element={<StocksPage />} />
-            <Route path="news" element={<StockNewsPage />} />
-            <Route path=":id" element={<StockDetailPage />} />
-          </Route>
+              <Route path="/prognosen" element={<IncomePage />} />
 
-          <Route path="/ausgabengruppen" element={<ExpenseGroupsPage />} />
+              <Route path="/aktien" element={<StocksLayout />}>
+                <Route index element={<StocksPage />} />
+                <Route path="news" element={<StockNewsPage />} />
+                <Route path=":id" element={<StockDetailPage />} />
+              </Route>
 
-          <Route path="/ausgabengruppen/:id" element={<ExpenseGroupDetailPage />} />
+              <Route path="/ausgabengruppen" element={<ExpenseGroupsPage />} />
 
-          <Route path="/schulden" element={<DebtsPage />} />
+              <Route path="/ausgabengruppen/:id" element={<ExpenseGroupDetailPage />} />
 
-          <Route path="/schulden/:id" element={<DebtDetailPage />} />
+              <Route path="/schulden" element={<DebtsPage />} />
 
-          <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/schulden/:id" element={<DebtDetailPage />} />
 
-        </Routes>
+              <Route path="/settings" element={<SettingsPage />} />
 
-      </main>
+            </Routes>
+
+          </main>
+        </>
+      ) : null}
+
+      {setupRequired === null ? (
+        <div className="fh-setup-wait" aria-busy="true" aria-live="polite" />
+      ) : null}
+
+      <DeveloperLogDock />
 
     </div>
 
   );
 
 }
-

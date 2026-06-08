@@ -61,7 +61,7 @@ export function DebtsPage() {
               <div style={ui.thName}>{t('common.name')}</div>
               <ThAmount col="owed">{t('debts.owedToMe')}</ThAmount>
               <ThAmount col="owe">{t('debts.iOwe')}</ThAmount>
-              <div />
+              <div style={ui.tdActions} />
             </>
           }
         >

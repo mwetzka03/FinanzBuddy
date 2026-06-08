@@ -1,5 +1,8 @@
 import { Languages, Moon, Settings2, Sun, Terminal } from 'lucide-react';
 import { DevTerminal } from '../components/common/DevTerminal';
+import { AccountsSettingsPanel } from '../components/settings/AccountsSettingsPanel';
+import { SetupAwareBankImportPanel } from '../components/settings/SetupAwareBankImportPanel';
+import { DataManagementPanel } from '../components/settings/DataManagementPanel';
 import { useLocale } from '../i18n/LocaleProvider';
 import { LOCALES } from '../i18n/types';
 import { useDeveloperMode } from '../lib/developerMode';
@@ -13,8 +16,8 @@ export function SettingsPage() {
 
   return (
     <PageShell title={t('settings.title')} intro={t('settings.subtitle')}>
-      <div className="fh-settings-prefs-grid">
-        <article className="fh-panel fh-settings-pref">
+      <div className="fh-settings-header-grid">
+        <article className="fh-panel fh-settings-pref fh-settings-grid-lang">
           <header className="fh-panel-head">
             <Languages size={18} aria-hidden />
             <h2>{t('settings.language.title')}</h2>
@@ -36,7 +39,7 @@ export function SettingsPage() {
           </div>
         </article>
 
-        <article className="fh-panel fh-settings-pref">
+        <article className="fh-panel fh-settings-pref fh-settings-grid-appearance">
           <header className="fh-panel-head">
             {mode === 'dark' ? <Moon size={18} aria-hidden /> : <Sun size={18} aria-hidden />}
             <h2>{t('settings.appearance.title')}</h2>
@@ -58,7 +61,7 @@ export function SettingsPage() {
           </div>
         </article>
 
-        <article className="fh-panel fh-settings-pref">
+        <article className="fh-panel fh-settings-pref fh-settings-grid-dev">
           <header className="fh-panel-head">
             <Terminal size={18} aria-hidden />
             <h2>{t('settings.developerMode.title')}</h2>
@@ -84,14 +87,25 @@ export function SettingsPage() {
           </div>
         </article>
 
-        <article className="fh-panel fh-settings-pref">
+        <article className="fh-panel fh-settings-pref fh-settings-grid-about">
           <header className="fh-panel-head">
             <Settings2 size={18} aria-hidden />
             <h2>{t('settings.about.title')}</h2>
           </header>
           <p className="fh-panel-desc">{t('settings.about.desc')}</p>
+          <p className="fh-settings-about-credit">{t('settings.about.credit')}</p>
         </article>
+
+        <div className="fh-settings-grid-data">
+          <DataManagementPanel embedded />
+        </div>
+
+        <div className="fh-settings-grid-bank">
+          <SetupAwareBankImportPanel embedded />
+        </div>
       </div>
+
+      <AccountsSettingsPanel />
 
       {devModeEnabled && (
         <article className="fh-panel fh-settings-dev-panel">

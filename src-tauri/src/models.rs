@@ -9,6 +9,9 @@ pub struct Account {
   pub name: String,
   pub is_liquid: bool,
   pub balance_source: String,
+  pub account_kind: String,
+  pub parent_account_id: Option<Uuid>,
+  pub iban: Option<String>,
   pub is_main: bool,
   pub created_at: DateTime<Utc>,
 }
@@ -27,6 +30,7 @@ pub struct LedgerTransaction {
   pub notes: Option<String>,
   pub source_id: Option<String>,
   pub variable_cost_id: Option<Uuid>,
+  pub fixed_cost_id: Option<Uuid>,
   pub icon: String,
   pub color: String,
   pub created_at: DateTime<Utc>,
@@ -75,6 +79,7 @@ pub struct IncomeForecast {
   pub day_of_month: Option<i64>,
   pub end_charge_date: Option<String>,
   pub active: bool,
+  pub account_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +106,7 @@ pub struct VariableCost {
   pub icon: String,
   pub color: String,
   pub created_at: DateTime<Utc>,
+  pub account_id: String,
   /// Prognose für den laufenden Monat (gleich `amount_cents`).
   pub current_month_forecast_cents: i64,
   /// Effektiver Ist-Wert (Prognose solange Monat offen, danach gebucht).
@@ -147,6 +153,17 @@ pub struct TimelineEvent {
   pub amount_cents: i64,
   pub account_id: Option<String>,
   pub account_name: Option<String>,
+  /// Umbuchung zwischen eigenen Konten (Bankimport per IBAN oder manueller Transfer).
+  #[serde(default)]
+  pub internal_transfer: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardPeriodNavItem {
+  pub period_start: String,
+  pub period_end: String,
+  pub is_current: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,6 +174,8 @@ pub struct MonthView {
   pub income_cents: i64,
   pub fixed_costs_cents: i64,
   pub variable_costs_cents: i64,
+  pub remaining_fixed_costs_cents: i64,
+  pub remaining_variable_costs_cents: i64,
   pub applied_buys_cents: i64,
   pub transfers_cents: i64,
   pub end_balance_cents: i64,
@@ -175,6 +194,13 @@ pub struct MonthView {
   pub kontostand_start_saldo_cents: i64,
   /// Ist-Saldo am Ende des Vormonats (Depot: Kostenbasis bis dahin).
   pub prev_kontostand_cents: i64,
+  pub period_mode: String,
+  pub period_start: String,
+  pub period_end: String,
+  pub salary_cutoff_date: Option<String>,
+  pub period_is_current: bool,
+  pub booked_fixed_costs_cents: i64,
+  pub booked_variable_costs_cents: i64,
   pub events: Vec<TimelineEvent>,
 }
 

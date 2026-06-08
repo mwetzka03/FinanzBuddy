@@ -203,15 +203,15 @@ pub fn last_business_day_of_month_rp(year: i32, month: u32) -> NaiveDate {
   d
 }
 
-/// Buchungsmonat für Einnahmen: am letzten Bankarbeitstag → Folgemonat.
-pub fn income_accounting_month(iso_date: &str) -> Option<String> {
-  let d = parse_iso_date(iso_date)?;
-  let month = format!("{:04}-{:02}", d.year(), d.month());
-  let last_bd = last_business_day_of_month_rp(d.year(), d.month());
-  if d == last_bd {
-    return month_add_iso(&month, 1);
+/// Second-to-last business day in a calendar month (Gehaltszeitraum-Ende).
+#[cfg(test)]
+fn penultimate_business_day_of_month_rp(year: i32, month: u32) -> NaiveDate {
+  let last = last_business_day_of_month_rp(year, month);
+  let mut d = last - Duration::days(1);
+  while !is_business_day_rp(d) || d.month() != month {
+    d -= Duration::days(1);
   }
-  Some(month)
+  d
 }
 
 pub fn resolve_month_due_date_rp(year: i32, month: u32, due_rule: &str, day_of_month: Option<u32>) -> NaiveDate {
@@ -438,6 +438,14 @@ mod tests {
       None,
     );
     assert_eq!(september, vec!["2026-09-15"]);
+  }
+
+  #[test]
+  fn penultimate_business_day_before_last() {
+    let pen = penultimate_business_day_of_month_rp(2026, 8);
+    assert_eq!(pen, NaiveDate::from_ymd_opt(2026, 8, 28).unwrap());
+    let last = last_business_day_of_month_rp(2026, 8);
+    assert_eq!(last, NaiveDate::from_ymd_opt(2026, 8, 31).unwrap());
   }
 
   #[test]

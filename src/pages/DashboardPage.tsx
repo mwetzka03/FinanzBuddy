@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import type { Account, DayView, DebtSummary, IsoDate, IsoMonth, MonthView } from '../lib/types';
+import type { Account, DashboardPeriodNavItem, DayView, DebtSummary, IsoDate, IsoMonth, MonthView } from '../lib/types';
 
 import { AmountTable } from '../components/data/AmountTable';
 
@@ -12,27 +12,27 @@ import {
 
   formatDisplayMonthLong,
 
+  dashboardPeriodLabel,
   isoToday,
-
+  isoToMonth,
   monthAdd,
   toIsoMonth,
 } from '../lib/date';
-import { formatEurFromCents, formatExpenseEurFromCents, formatIncomeEurFromCents, formatSignedEurFromCents } from '../lib/money';
+import { formatBalanceEurFromCents, formatEurFromCents, formatExpenseEurFromCents, formatIncomeEurFromCents, formatSignedEurFromCents } from '../lib/money';
 import {
-  computeDashboardMonthChain,
-  dashboardMonthComparison,
   dashboardEventsForMonth,
-  DASHBOARD_MIN_MONTH,
+  DASHBOARD_MIN_MONTH_FALLBACK,
+  dashboardEventsWithRunningSubtotals,
   filterDashboardEvents,
-  monthsFromTo,
-  isPastOrCurrentMonth,
+  isCurrentDashboardPeriod,
+  type DashboardEventFilter,
   shouldShowKontostand,
   sumDayExpenses,
   sumDayIncome,
-  type DashboardEventFilter,
 } from '../lib/summary';
 
-import { getDayView, getDebtSummary, getMonthView, listAccounts } from '../tauri/api';
+import { getDayView, getDebtSummary, getDashboardSettings, getMonthView, listAccounts, listDashboardPeriods, refreshDashboardCache } from '../tauri/api';
+import { isSavingsPotAccount } from '../lib/accounts';
 
 import { useUi } from '../lib/ui';
 
@@ -47,60 +47,73 @@ import { DashboardAccountSelect } from '../components/dashboard/DashboardAccount
 import { DashboardCard, formatDelta } from '../components/dashboard/DashboardCard';
 
 
-function EventsTable({ events }: { events: MonthView['events'] }) {
+function formatRunningSubtotal(filter: DashboardEventFilter, cents: number): string {
+  if (filter === 'income') return formatIncomeEurFromCents(cents);
+  if (filter === 'expense' || filter === 'fixed_cost' || filter === 'variable_cost' || filter === 'buy') {
+    return formatExpenseEurFromCents(cents);
+  }
+  return formatSignedEurFromCents(cents);
+}
 
+/** Farblogik für Zwischensumme: grün bei Plus, rot bei Minus. */
+function runningSubtotalColorCents(filter: DashboardEventFilter, cents: number): number {
+  if (filter === 'expense' || filter === 'fixed_cost' || filter === 'variable_cost' || filter === 'buy') {
+    return -Math.abs(cents);
+  }
+  if (filter === 'income') {
+    return Math.abs(cents);
+  }
+  return cents;
+}
+
+function EventsTable({
+  events,
+  filter = 'all',
+  accountFilter = null,
+}: {
+  events: MonthView['events'];
+  filter?: DashboardEventFilter;
+  accountFilter?: string | null;
+}) {
   const ui = useUi();
-
   const { t } = useLocale();
+  const rows = useMemo(
+    () => dashboardEventsWithRunningSubtotals(events, filter, accountFilter),
+    [events, filter, accountFilter],
+  );
+  const tableCols = '110px 140px 1fr 120px 120px';
 
   return (
-
     <AmountTable>
-
-      <div style={{ ...ui.tableHead, gridTemplateColumns: '110px 140px 1fr 120px' }}>
-
-        <div>{t('common.date')}</div>
-
-        <div>{t('dashboard.accountLabel')}</div>
-
+      <div style={{ ...ui.tableHead, gridTemplateColumns: tableCols }}>
+        <div style={ui.thName}>{t('common.date')}</div>
+        <div style={ui.thName}>{t('dashboard.accountLabel')}</div>
         <div style={ui.thName}>{t('transactions.titleField')}</div>
-
         <ThAmount col="amount">{t('common.amount')}</ThAmount>
-
+        <div style={{ ...ui.thAmount, textAlign: 'right' }}>{t('dashboard.runningSubtotal')}</div>
       </div>
 
-      {events.length === 0 ? (
-
+      {rows.length === 0 ? (
         <div style={ui.emptyRow}>{t('dashboard.noEvents')}</div>
-
       ) : (
-
-        events.map((ev) => (
-
-          <div key={ev.id} style={{ ...ui.tableRow, gridTemplateColumns: '110px 140px 1fr 120px' }}>
-
-            <div style={ui.tdMono}>{formatDisplayDate(ev.date)}</div>
-
-            <div style={{ ...ui.tdCenter, color: ui.colors.textMuted, fontSize: 13 }}>{ev.accountName ?? '—'}</div>
-
+        rows.map(({ event: ev, runningSubtotalCents }) => (
+          <div key={ev.id} style={{ ...ui.tableRow, gridTemplateColumns: tableCols }}>
+            <div style={{ ...ui.tdMono, textAlign: 'left' }}>{formatDisplayDate(ev.date)}</div>
+            <div style={{ ...ui.tdName, color: ui.colors.textMuted, fontSize: 13 }}>{ev.accountName ?? '—'}</div>
             <div style={ui.tdName}>{ev.title}</div>
-
-            <TdAmount col="amount" amountCents={ev.amountCents}>
-
-              {formatSignedEurFromCents(ev.amountCents)}
-
+            <TdAmount col="amount" amountCents={ev.amountCents} neutral={ev.type === 'transfer'}>
+              {ev.type === 'transfer'
+                ? formatEurFromCents(Math.abs(ev.amountCents))
+                : formatSignedEurFromCents(ev.amountCents)}
             </TdAmount>
-
+            <div style={ui.tdAmountText(runningSubtotalColorCents(filter, runningSubtotalCents))}>
+              {formatRunningSubtotal(filter, runningSubtotalCents)}
+            </div>
           </div>
-
         ))
-
       )}
-
     </AmountTable>
-
   );
-
 }
 
 
@@ -158,17 +171,47 @@ export function DashboardPage() {
 
 
 
+  const [minMonth, setMinMonth] = useState<IsoMonth>(DASHBOARD_MIN_MONTH_FALLBACK);
+  const [periodMode, setPeriodMode] = useState<'calendar_month' | 'since_last_salary'>('calendar_month');
+  const [salaryPeriods, setSalaryPeriods] = useState<DashboardPeriodNavItem[]>([]);
+  const [periodStart, setPeriodStart] = useState<IsoDate | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
   useEffect(() => {
 
     listAccounts().then(setAccounts).catch(() => undefined);
 
     getDebtSummary().then(setDebtSummary).catch(() => undefined);
 
+    getDashboardSettings()
+      .then(async (settings) => {
+        if (settings.minMonth) setMinMonth(settings.minMonth);
+        setPeriodMode(settings.periodMode);
+        if (settings.periodMode === 'since_last_salary') {
+          try {
+            const periods = await listDashboardPeriods();
+            setSalaryPeriods(periods);
+          } catch {
+            /* ignore */
+          }
+          if (settings.currentPeriodStart) {
+            setPeriodStart(settings.currentPeriodStart);
+            setMonth(isoToMonth(settings.currentPeriodStart));
+          }
+        }
+      })
+      .catch(() => undefined);
+
   }, []);
 
 
 
   const accountId = accountFilter || null;
+  const useSalaryPeriodNav = periodMode === 'since_last_salary' && salaryPeriods.length > 0;
+  const periodIndex = useMemo(
+    () => (periodStart ? salaryPeriods.findIndex((p) => p.periodStart === periodStart) : -1),
+    [salaryPeriods, periodStart],
+  );
 
   const selectedAccount = useMemo(
 
@@ -178,19 +221,62 @@ export function DashboardPage() {
 
   );
 
+  const isSavingsPotView = selectedAccount ? isSavingsPotAccount(selectedAccount) : false;
+  const showLiquidCards = !accountFilter;
+  const showForecastExpenseCards = !isSavingsPotView;
+
   const isStockDepot = selectedAccount?.balanceSource === 'stock_portfolio';
 
-  const canGoPrevMonth = month > DASHBOARD_MIN_MONTH;
+  const canGoPrevMonth = useSalaryPeriodNav ? periodIndex > 0 : month > minMonth;
+  const canGoNextMonth = useSalaryPeriodNav
+    ? periodIndex >= 0 && periodIndex < salaryPeriods.length - 1
+    : true;
 
-  const liquidAccountIds = useMemo(
+  function goPrevPeriod() {
+    if (useSalaryPeriodNav && periodIndex > 0) {
+      const prev = salaryPeriods[periodIndex - 1];
+      setPeriodStart(prev.periodStart);
+      setMonth(isoToMonth(prev.periodStart));
+      return;
+    }
+    setMonth((m) => monthAdd(m, -1));
+  }
 
-    () => new Set(accounts.filter((a) => a.isLiquid).map((a) => a.id)),
+  function goNextPeriod() {
+    if (useSalaryPeriodNav && periodIndex >= 0 && periodIndex < salaryPeriods.length - 1) {
+      const next = salaryPeriods[periodIndex + 1];
+      setPeriodStart(next.periodStart);
+      setMonth(isoToMonth(next.periodStart));
+      return;
+    }
+    setMonth((m) => monthAdd(m, 1));
+  }
 
-    [accounts],
-
-  );
-
-
+  async function handleRefreshCalculations() {
+    setRefreshing(true);
+    setError(null);
+    try {
+      await refreshDashboardCache();
+      const selectedMonth = useSalaryPeriodNav && periodStart ? isoToMonth(periodStart) : month;
+      const prevPeriodStart =
+        useSalaryPeriodNav && periodIndex > 0 ? salaryPeriods[periodIndex - 1].periodStart : null;
+      const prevMonth = monthAdd(selectedMonth, -1);
+      const [monthData, prevMonthData] = await Promise.all([
+        getMonthView(selectedMonth, accountId, useSalaryPeriodNav ? periodStart : null),
+        prevPeriodStart
+          ? getMonthView(isoToMonth(prevPeriodStart), accountId, prevPeriodStart).catch(() => null)
+          : !useSalaryPeriodNav && prevMonth >= minMonth
+            ? getMonthView(prevMonth, accountId).catch(() => null)
+            : Promise.resolve(null),
+      ]);
+      setData(monthData);
+      setPrevMonthView(prevMonthData);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
 
@@ -217,50 +303,38 @@ export function DashboardPage() {
 
 
 
-      const selectedMonth = month;
+      const selectedMonth = useSalaryPeriodNav && periodStart ? isoToMonth(periodStart) : month;
+      const prevPeriodStart =
+        useSalaryPeriodNav && periodIndex > 0 ? salaryPeriods[periodIndex - 1].periodStart : null;
       const prevMonth = monthAdd(selectedMonth, -1);
-      const chainMonths = monthsFromTo(DASHBOARD_MIN_MONTH, selectedMonth);
-      const seedMonth = monthAdd(DASHBOARD_MIN_MONTH, -1);
 
       Promise.all([
-        ...chainMonths.map((m) => getMonthView(m, accountId)),
-        getMonthView(seedMonth, accountId).catch(() => null),
-        prevMonth >= DASHBOARD_MIN_MONTH ? getMonthView(prevMonth, accountId).catch(() => null) : Promise.resolve(null),
+        getMonthView(selectedMonth, accountId, useSalaryPeriodNav ? periodStart : null),
+        prevPeriodStart
+          ? getMonthView(isoToMonth(prevPeriodStart), accountId, prevPeriodStart).catch(() => null)
+          : !useSalaryPeriodNav && prevMonth >= minMonth
+            ? getMonthView(prevMonth, accountId).catch(() => null)
+            : Promise.resolve(null),
       ])
         .then((results) => {
           if (!alive || loadGenRef.current !== reqId) return;
 
-          const prevMonthData = results[results.length - 1] as MonthView | null;
-          const seedPrevMonthView = results[results.length - 2] as MonthView | null;
-          const views = results.slice(0, -2) as MonthView[];
-          const viewsByMonth = new Map<IsoMonth, MonthView>();
-          chainMonths.forEach((m, i) => viewsByMonth.set(m, views[i]));
-
-          const monthData = viewsByMonth.get(selectedMonth)!;
+          const monthData = results[0] as MonthView;
+          const prevMonthData = results[1] as MonthView | null;
           setData(monthData);
           setPrevMonthView(prevMonthData);
 
-          const chain = computeDashboardMonthChain({
-            viewsByMonth,
-            fromMonth: DASHBOARD_MIN_MONTH,
-            toMonth: selectedMonth,
-            liquidAccountIds,
-            seedPrevMonthView,
-          });
+          const incomeCents = monthData.incomeCents;
+          const expensesCents = Math.max(
+            0,
+            monthData.startBalanceCents + monthData.incomeCents - monthData.endBalanceCents,
+          );
+          const netCents = monthData.endBalanceCents - monthData.startBalanceCents;
 
-          const row = chain.get(selectedMonth);
-          if (!row) return;
-
-          const summary = dashboardMonthComparison({
-            incomeCents: row.incomeCents,
-            expensesCents: row.expensesCents,
-            liquidExpensesCents: row.liquidExpensesCents,
-          });
-
-          let startBalanceCents = row.startBalanceCents;
-          let endBalanceCents = row.endBalanceCents;
-          let startLiquidCents = row.startLiquidCents;
-          let endLiquidCents = row.endLiquidCents;
+          let startBalanceCents = monthData.startBalanceCents;
+          let endBalanceCents = monthData.endBalanceCents;
+          let startLiquidCents = monthData.startLiquidCents;
+          let endLiquidCents = monthData.totalLiquidCents;
           const kontostandCents = monthData.kontostandCents;
           const prevKontostandCents = monthData.prevKontostandCents;
 
@@ -271,9 +345,10 @@ export function DashboardPage() {
           }
 
           setComparison({
-            ...summary,
-            incomeCents: row.incomeCents,
-            liquidExpensesCents: row.liquidExpensesCents,
+            incomeCents,
+            expensesCents,
+            netCents,
+            liquidExpensesCents: expensesCents,
             incomeMonth: selectedMonth,
             expenseMonth: selectedMonth,
             startBalanceCents,
@@ -347,21 +422,23 @@ export function DashboardPage() {
 
     };
 
-  }, [month, mode, day, accountId, liquidAccountIds, isStockDepot]);
+  }, [month, mode, day, accountId, isStockDepot, minMonth, periodStart, useSalaryPeriodNav, periodIndex, salaryPeriods]);
 
 
 
   const incomeCardTitle = comparison
-
-    ? t('dashboard.cards.incomeWithMonth', { month: formatDisplayMonthLong(comparison.incomeMonth, locale) })
-
+    ? data?.periodMode === 'since_last_salary'
+      ? t('dashboard.cards.incomeWithPeriod', { period: dashboardPeriodLabel(data, month, locale) })
+      : t('dashboard.cards.incomeWithMonth', { month: formatDisplayMonthLong(comparison.incomeMonth, locale) })
     : t('dashboard.cards.income');
 
   const expenseCardTitle = comparison
-
-    ? t('dashboard.cards.expensesWithMonth', { month: formatDisplayMonthLong(comparison.expenseMonth, locale) })
-
+    ? data?.periodMode === 'since_last_salary'
+      ? t('dashboard.cards.expensesWithPeriod', { period: dashboardPeriodLabel(data, month, locale) })
+      : t('dashboard.cards.expensesWithMonth', { month: formatDisplayMonthLong(comparison.expenseMonth, locale) })
     : t('dashboard.cards.expenses');
+
+  const periodNavLabel = dashboardPeriodLabel(data, month, locale);
 
 
 
@@ -403,6 +480,8 @@ export function DashboardPage() {
 
   const cardRow3 = { ...cardRow2, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' };
 
+  const cardRow1 = { ...cardRow2, gridTemplateColumns: '1fr' };
+
   const cardRow4 = { ...cardRow2, gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 16 };
 
 
@@ -413,7 +492,9 @@ export function DashboardPage() {
 
   const dayKontostandDelta = dayData ? dayData.kontostandCents - dayData.prevKontostandCents : 0;
 
-  const showMonthKontostand = isPastOrCurrentMonth(month);
+  const showMonthKontostand = data ? isCurrentDashboardPeriod(data) : false;
+  const showRemainingCostCards = data ? isCurrentDashboardPeriod(data) : true;
+  const isPastPeriod = data != null && !data.periodIsCurrent;
   const kontostandSubtitle =
     data && data.kontostandAsOf !== isoToday()
       ? t('common.balanceAsOf', { date: formatDisplayDate(data.kontostandAsOf) })
@@ -428,8 +509,8 @@ export function DashboardPage() {
   );
 
   const filteredEvents = useMemo(
-    () => filterDashboardEvents(monthEvents, eventFilter, month),
-    [monthEvents, eventFilter, month],
+    () => filterDashboardEvents(monthEvents, eventFilter, month, isSavingsPotView, accountId),
+    [monthEvents, eventFilter, month, isSavingsPotView, accountId],
   );
 
 
@@ -471,11 +552,11 @@ export function DashboardPage() {
 
             {mode === 'month' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button style={ui.btn} onClick={() => setMonth((m) => monthAdd(m, -1))} disabled={!canGoPrevMonth}>
+                <button style={ui.btn} onClick={goPrevPeriod} disabled={!canGoPrevMonth}>
                   ◀
                 </button>
-                <div style={{ minWidth: 120, textAlign: 'center' }}>{formatDisplayMonthLong(month, locale)}</div>
-                <button style={ui.btn} onClick={() => setMonth((m) => monthAdd(m, 1))}>
+                <div style={{ minWidth: 160, textAlign: 'center' }}>{periodNavLabel}</div>
+                <button style={ui.btn} onClick={goNextPeriod} disabled={!canGoNextMonth}>
                   ▶
                 </button>
               </div>
@@ -485,6 +566,16 @@ export function DashboardPage() {
                 <DateInput value={day} onChange={setDay} />
               </label>
             )}
+
+            <button
+              type="button"
+              style={ui.btn}
+              onClick={() => void handleRefreshCalculations()}
+              disabled={refreshing || loading}
+              title={t('dashboard.refreshCalculations')}
+            >
+              {refreshing ? t('dashboard.refreshingCalculations') : t('dashboard.refreshCalculations')}
+            </button>
           </div>
         </div>
 
@@ -506,7 +597,8 @@ export function DashboardPage() {
               <div style={cardRow2}>
                 <DashboardCard
                   title={t('dashboard.cards.kontostand')}
-                  value={formatEurFromCents(kontostandCents)}
+                  value={formatBalanceEurFromCents(kontostandCents)}
+                  valueColor={kontostandCents < 0 ? ui.colors.amountNegative : undefined}
                   subtitle={kontostandSubtitle}
                   info={t('dashboard.info.kontostand')}
                 />
@@ -521,7 +613,7 @@ export function DashboardPage() {
 
             <h3 style={{ marginTop: 0 }}>{t('dashboard.events')}</h3>
 
-            <EventsTable events={data.events} />
+            <EventsTable events={data.events} accountFilter={accountId} />
 
           </>
 
@@ -529,28 +621,51 @@ export function DashboardPage() {
 
           <>
 
-            <div style={showMonthKontostand ? cardRow3 : cardRow2}>
-
-              {showMonthKontostand && (
+            {showMonthKontostand ? (
+              <div style={showLiquidCards ? cardRow3 : cardRow2}>
                 <DashboardCard
                   title={t('dashboard.cards.kontostand')}
-                  value={formatEurFromCents(kontostandCents)}
+                  value={formatBalanceEurFromCents(kontostandCents)}
+                  valueColor={kontostandCents < 0 ? ui.colors.amountNegative : undefined}
                   subtitle={kontostandSubtitle}
                   info={t('dashboard.info.kontostand')}
                 />
-              )}
-
-              <DashboardCard title={t('dashboard.cards.startBalance')} value={formatEurFromCents(startBalanceCents)} info={t('dashboard.info.startBalance')} />
-
-              <DashboardCard title={t('dashboard.cards.startLiquid')} value={formatEurFromCents(startLiquidCents)} info={t('dashboard.info.startLiquid')} />
-
-            </div>
+                <DashboardCard
+                  title={t('dashboard.cards.startBalance')}
+                  value={formatBalanceEurFromCents(startBalanceCents)}
+                  valueColor={startBalanceCents < 0 ? ui.colors.amountNegative : undefined}
+                  info={t('dashboard.info.startBalance')}
+                />
+                {showLiquidCards ? (
+                  <DashboardCard title={t('dashboard.cards.startLiquid')} value={formatBalanceEurFromCents(startLiquidCents)} valueColor={startLiquidCents < 0 ? ui.colors.amountNegative : undefined} info={t('dashboard.info.startLiquid')} />
+                ) : null}
+              </div>
+            ) : (
+              <div style={showLiquidCards ? cardRow2 : cardRow1}>
+                <DashboardCard
+                  title={t('dashboard.cards.startBalance')}
+                  value={formatBalanceEurFromCents(startBalanceCents)}
+                  valueColor={startBalanceCents < 0 ? ui.colors.amountNegative : undefined}
+                  info={t('dashboard.info.startBalance')}
+                />
+                {showLiquidCards ? (
+                  <DashboardCard title={t('dashboard.cards.startLiquid')} value={formatBalanceEurFromCents(startLiquidCents)} valueColor={startLiquidCents < 0 ? ui.colors.amountNegative : undefined} info={t('dashboard.info.startLiquid')} />
+                ) : null}
+              </div>
+            )}
 
             <div style={cardRow3}>
 
               <DashboardCard title={incomeCardTitle} value={formatIncomeEurFromCents(comparison.incomeCents)} info={t('dashboard.info.income')} active={eventFilter === 'income'} onClick={() => toggleEventFilter('income')} />
 
-              <DashboardCard title={expenseCardTitle} value={formatExpenseEurFromCents(comparison.expensesCents)} info={t('dashboard.info.expenses')} active={eventFilter === 'expense'} onClick={() => toggleEventFilter('expense')} />
+              <DashboardCard
+                title={expenseCardTitle}
+                value={formatExpenseEurFromCents(comparison.expensesCents)}
+                valueColor={comparison.expensesCents > 0 ? ui.colors.amountNegative : ui.colors.textMuted}
+                info={t('dashboard.info.expenses')}
+                active={eventFilter === 'expense'}
+                onClick={() => toggleEventFilter('expense')}
+              />
 
               <DashboardCard
 
@@ -566,15 +681,20 @@ export function DashboardPage() {
 
             </div>
 
+            {showForecastExpenseCards ? (
             <div style={cardRow3}>
 
               <DashboardCard
 
-                title={t('dashboard.cards.fixedCosts')}
+                title={isPastPeriod ? t('dashboard.cards.fixedCosts') : t('dashboard.cards.remainingFixedCosts')}
 
-                value={formatExpenseEurFromCents(data.fixedCostsCents)}
+                value={formatExpenseEurFromCents(
+                  isPastPeriod
+                    ? data.bookedFixedCostsCents
+                    : (data.remainingFixedCostsCents ?? data.fixedCostsCents),
+                )}
 
-                info={t('dashboard.info.fixedCosts')}
+                info={isPastPeriod ? t('dashboard.info.fixedCosts') : t('dashboard.info.remainingFixedCosts')}
 
                 active={eventFilter === 'fixed_cost'}
 
@@ -584,11 +704,15 @@ export function DashboardPage() {
 
               <DashboardCard
 
-                title={t('dashboard.cards.variableCosts')}
+                title={isPastPeriod ? t('dashboard.cards.variableCosts') : t('dashboard.cards.remainingVariableCosts')}
 
-                value={formatExpenseEurFromCents(data.variableCostsCents ?? 0)}
+                value={formatExpenseEurFromCents(
+                  isPastPeriod
+                    ? data.bookedVariableCostsCents
+                    : (data.remainingVariableCostsCents ?? data.variableCostsCents ?? 0),
+                )}
 
-                info={t('dashboard.info.variableCosts')}
+                info={isPastPeriod ? t('dashboard.info.variableCosts') : t('dashboard.info.remainingVariableCosts')}
 
                 active={eventFilter === 'variable_cost'}
 
@@ -599,7 +723,9 @@ export function DashboardPage() {
               <DashboardCard title={t('dashboard.cards.buys')} value={formatExpenseEurFromCents(data.appliedBuysCents)} info={t('dashboard.info.buys')} active={eventFilter === 'buy'} onClick={() => toggleEventFilter('buy')} />
 
             </div>
+            ) : null}
 
+            {showLiquidCards ? (
             <div style={cardRow2}>
 
               <DashboardCard title={t('dashboard.cards.debtOwed')} value={formatEurFromCents(debtSummary?.owedToMeCents ?? 0)} valueColor={ui.colors.accentDark} info={t('dashboard.info.debtOwed')} />
@@ -607,10 +733,16 @@ export function DashboardPage() {
               <DashboardCard title={t('dashboard.cards.debtIOwe')} value={formatEurFromCents(debtSummary?.iOweCents ?? 0)} valueColor={ui.colors.amountNegative} info={t('dashboard.info.debtIOwe')} />
 
             </div>
+            ) : null}
 
-            <div style={cardRow4}>
+            <div style={showLiquidCards ? cardRow4 : cardRow2}>
 
-              <DashboardCard title={t('dashboard.cards.endBalance')} value={formatEurFromCents(endBalanceCents)} info={t('dashboard.info.endBalance')} />
+              <DashboardCard
+                title={t('dashboard.cards.endBalance')}
+                value={formatBalanceEurFromCents(endBalanceCents)}
+                valueColor={endBalanceCents < 0 ? ui.colors.amountNegative : undefined}
+                info={t('dashboard.info.endBalance')}
+              />
 
               <DashboardCard
 
@@ -624,7 +756,9 @@ export function DashboardPage() {
 
               />
 
-              <DashboardCard title={t('dashboard.cards.endLiquid')} value={formatEurFromCents(endLiquidCents)} info={t('dashboard.info.endLiquid')} />
+              {showLiquidCards ? (
+                <>
+              <DashboardCard title={t('dashboard.cards.endLiquid')} value={formatBalanceEurFromCents(endLiquidCents)} valueColor={endLiquidCents < 0 ? ui.colors.amountNegative : undefined} info={t('dashboard.info.endLiquid')} />
 
               <DashboardCard
 
@@ -637,6 +771,8 @@ export function DashboardPage() {
                 info={t('dashboard.info.deltaLiquid')}
 
               />
+                </>
+              ) : null}
 
             </div>
 
@@ -656,7 +792,11 @@ export function DashboardPage() {
 
             </h3>
 
-            <EventsTable events={eventFilter === 'all' ? monthEvents : filteredEvents} />
+            <EventsTable
+              events={eventFilter === 'all' ? monthEvents : filteredEvents}
+              filter={eventFilter}
+              accountFilter={accountId}
+            />
 
           </>
 
@@ -682,7 +822,7 @@ export function DashboardPage() {
 
             <h3 style={{ marginTop: 0 }}>{t('dashboard.eventsOnDay', { date: formatDisplayDate(dayData.date) })}</h3>
 
-            <EventsTable events={dayData.events} />
+            <EventsTable events={dayData.events} accountFilter={accountId} />
 
           </>
 
@@ -704,7 +844,7 @@ export function DashboardPage() {
 
             <h3 style={{ marginTop: 0 }}>{t('dashboard.eventsOnDay', { date: formatDisplayDate(dayData.date) })}</h3>
 
-            <EventsTable events={dayData.events} />
+            <EventsTable events={dayData.events} accountFilter={accountId} />
 
           </>
 

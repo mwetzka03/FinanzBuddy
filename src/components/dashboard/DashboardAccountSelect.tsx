@@ -1,27 +1,34 @@
 import { useMemo, useState } from 'react';
 import type { Account } from '../../lib/types';
+import { buildAccountTreeRows, effectiveAccountKind, isOberspartopf } from '../../lib/accounts';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { useUi } from '../../lib/ui';
 
 function accountIcon(a: Account | null): string {
   if (!a) return '◉';
-  if (a.balanceSource === 'stock_portfolio') return '📈';
+  if (effectiveAccountKind(a) === 'depot') return '📈';
   if (a.isMain) return '★';
+  if (isOberspartopf(a)) return '🗂️';
+  if (effectiveAccountKind(a) === 'spartopf') return '🫙';
   if (a.isLiquid) return '💧';
   return '🏦';
 }
 
 function accountSubtitle(a: Account | null, t: (key: string) => string): string {
   if (!a) return t('common.overview');
-  if (a.balanceSource === 'stock_portfolio') return t('common.stockDepot');
+  if (effectiveAccountKind(a) === 'depot') return t('common.stockDepot');
+  if (isOberspartopf(a)) return t('accounts.oberspartopfAggregate');
   if (a.isMain) return t('common.mainAccountLabel');
+  if (effectiveAccountKind(a) === 'spartopf') return t('accounts.kindSpartopf');
   if (a.isLiquid) return t('common.liquidAccount');
   return t('common.accountGeneric');
 }
 
 function accountSubtitleShort(a: Account, t: (key: string) => string): string {
-  if (a.balanceSource === 'stock_portfolio') return t('common.depot');
+  if (effectiveAccountKind(a) === 'depot') return t('common.depot');
+  if (isOberspartopf(a)) return t('accounts.oberspartopfAggregate');
   if (a.isMain) return t('common.mainAccountLabel');
+  if (effectiveAccountKind(a) === 'spartopf') return t('accounts.kindSpartopf');
   if (a.isLiquid) return t('common.liquidAccount');
   return t('common.accountGeneric');
 }
@@ -30,11 +37,15 @@ export function DashboardAccountSelect(props: {
   accounts: Account[];
   value: string;
   onChange: (accountId: string) => void;
+  showAllOption?: boolean;
 }) {
   const ui = useUi();
   const { t } = useLocale();
   const { colors } = ui;
   const [open, setOpen] = useState(false);
+  const showAllOption = props.showAllOption ?? true;
+
+  const treeRows = useMemo(() => buildAccountTreeRows(props.accounts), [props.accounts]);
 
   const selected = useMemo(
     () => (props.value ? props.accounts.find((a) => a.id === props.value) ?? null : null),
@@ -117,34 +128,36 @@ export function DashboardAccountSelect(props: {
               overflowY: 'auto',
             }}
           >
-            <li>
-              <button
-                type="button"
-                role="option"
-                aria-selected={!props.value}
-                onClick={() => {
-                  props.onChange('');
-                  setOpen(false);
-                }}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  border: 'none',
-                  borderRadius: 10,
-                  background: !props.value ? colors.accentSoft : 'transparent',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  color: colors.text,
-                }}
-              >
-                <span style={{ fontSize: 16 }}>◉</span>
-                <span style={{ fontWeight: 600 }}>{t('common.allAccounts')}</span>
-              </button>
-            </li>
-            {props.accounts.map((a) => (
+            {showAllOption ? (
+              <li>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={!props.value}
+                  onClick={() => {
+                    props.onChange('');
+                    setOpen(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    border: 'none',
+                    borderRadius: 10,
+                    background: !props.value ? colors.accentSoft : 'transparent',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    color: colors.text,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>◉</span>
+                  <span style={{ fontWeight: 600 }}>{t('common.allAccounts')}</span>
+                </button>
+              </li>
+            ) : null}
+            {treeRows.map(({ account: a, depth }) => (
               <li key={a.id}>
                 <button
                   type="button"
@@ -160,6 +173,7 @@ export function DashboardAccountSelect(props: {
                     alignItems: 'center',
                     gap: 10,
                     padding: '10px 12px',
+                    paddingLeft: 12 + depth * 18,
                     border: 'none',
                     borderRadius: 10,
                     background: props.value === a.id ? colors.accentSoft : 'transparent',
@@ -170,7 +184,7 @@ export function DashboardAccountSelect(props: {
                 >
                   <span style={{ fontSize: 16 }}>{accountIcon(a)}</span>
                   <span>
-                    <span style={{ display: 'block', fontWeight: 600 }}>{a.name}</span>
+                    <span style={{ display: 'block', fontWeight: depth > 0 ? 500 : 600 }}>{a.name}</span>
                     <span style={{ display: 'block', fontSize: 11, color: colors.textMuted }}>
                       {accountSubtitleShort(a, t)}
                     </span>

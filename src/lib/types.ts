@@ -7,11 +7,16 @@ export type BuyItemStatus = 'parked' | 'applied';
 
 export type AccountBalanceSource = 'ledger' | 'stock_portfolio';
 
+export type AccountKind = 'standard' | 'spartopf' | 'oberspartopf' | 'depot';
+
 export interface Account {
   id: string;
   name: string;
   isLiquid: boolean;
   balanceSource: AccountBalanceSource;
+  accountKind: AccountKind;
+  parentAccountId: string | null;
+  iban: string | null;
   isMain: boolean;
   createdAt: string;
 }
@@ -30,12 +35,13 @@ export interface LedgerTransaction {
   notes: string | null;
   sourceId: string | null;
   variableCostId: string | null;
+  fixedCostId: string | null;
   icon: string;
   color: string;
   createdAt: string;
 }
 
-export type FixedCostDueRule = 'calendar_day' | 'first_business_day';
+export type FixedCostDueRule = 'calendar_day' | 'first_business_day' | 'last_business_day';
 
 export interface FixedCost {
   id: string;
@@ -76,6 +82,7 @@ export interface IncomeForecast {
   dayOfMonth: number | null;
   endChargeDate: IsoDate | null;
   active: boolean;
+  accountId: string;
 }
 
 export interface IncomeForecastDetail {
@@ -96,6 +103,7 @@ export interface VariableCost {
   icon: string;
   color: string;
   createdAt: string;
+  accountId: string;
   currentMonthForecastCents: number;
   currentMonthActualCents: number;
   currentMonthSpentCents: number;
@@ -133,6 +141,25 @@ export interface TimelineEvent {
   amountCents: number;
   accountId?: string | null;
   accountName?: string | null;
+  internalTransfer?: boolean;
+}
+
+export type DashboardPeriodMode = 'calendar_month' | 'since_last_salary';
+
+export interface DashboardPeriodNavItem {
+  periodStart: IsoDate;
+  periodEnd: IsoDate;
+  isCurrent: boolean;
+}
+
+export interface DashboardSettings {
+  periodMode: DashboardPeriodMode;
+  isTimeframeMonth: boolean;
+  incomeDate: number;
+  primaryIncomeForecastId: string | null;
+  minMonth: IsoMonth;
+  currentPeriodStart?: IsoDate | null;
+  minPeriodStart?: IsoDate | null;
 }
 
 export interface MonthView {
@@ -141,6 +168,8 @@ export interface MonthView {
   incomeCents: number;
   fixedCostsCents: number;
   variableCostsCents: number;
+  remainingFixedCostsCents: number;
+  remainingVariableCostsCents: number;
   appliedBuysCents: number;
   transfersCents: number;
   endBalanceCents: number;
@@ -152,6 +181,13 @@ export interface MonthView {
   kontostandStartCents: number;
   kontostandStartSaldoCents: number;
   prevKontostandCents: number;
+  periodMode: 'calendar_month' | 'since_last_salary';
+  periodStart: IsoDate;
+  periodEnd: IsoDate;
+  salaryCutoffDate?: IsoDate | null;
+  periodIsCurrent: boolean;
+  bookedFixedCostsCents: number;
+  bookedVariableCostsCents: number;
   events: TimelineEvent[];
 }
 
@@ -318,4 +354,55 @@ export interface StockNewsListResponse {
   marketArticles: NewsArticle[];
   cachedAt: string | null;
   refreshing: boolean;
+}
+
+export interface BankImportResult {
+  format: string;
+  iban: string | null;
+  importedCount: number;
+  skippedCount: number;
+  transferCount: number;
+  openingBalanceSet: boolean;
+  closingBalanceCents: number | null;
+  closingBalanceDate: string | null;
+  message: string;
+  warnings: string[];
+}
+
+export interface BankImportPreviewTransaction {
+  index: number;
+  date: string;
+  amountCents: number;
+  title: string;
+  notes: string | null;
+  counterpartyIban: string | null;
+}
+
+export interface BankImportPreview {
+  format: string;
+  iban: string | null;
+  transactions: BankImportPreviewTransaction[];
+  incomeIndices: number[];
+}
+
+export interface ChildBalanceInput {
+  accountId: string;
+  currentBalanceCents: number;
+}
+
+export interface PrimaryIncomeImportInput {
+  transactionIndex?: number | null;
+  forecastName: string;
+  forecastAmountCents: number;
+  useImportAmount: boolean;
+  dueRule?: IncomeForecastDueRule | null;
+  dayOfMonth?: number | null;
+  employerIban?: string | null;
+}
+
+export interface DataBackupResult {
+  filePath: string;
+  tableCount: number;
+  rowCount: number;
+  message: string;
 }

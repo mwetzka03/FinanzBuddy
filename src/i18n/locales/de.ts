@@ -6,6 +6,8 @@ export const de = {
     edit: 'Bearbeiten',
     add: 'Hinzufügen',
     back: 'Zurück',
+    next: 'Weiter',
+    required: 'Pflicht',
     name: 'Name',
     amount: 'Betrag',
     date: 'Datum',
@@ -93,6 +95,7 @@ export const de = {
       navigation: 'Navigation',
       loading: 'Laden',
       backend: 'Backend',
+      calc: 'Berechnung',
     },
   },
 
@@ -134,23 +137,104 @@ export const de = {
     },
     about: {
       title: 'Über FinanzBuddy',
-      desc: 'Persönliche Finanzplanung mit Ledger, Prognosen und Depot — alles lokal auf deinem Rechner.',
+      desc: 'Persönliche Finanzplanung mit Ledger, Prognosen, Gehaltszeiträumen und Depot — alles lokal auf deinem Rechner. Dashboard-Zeitraum und Haupteinnahme legst du einmalig in der Einrichtung fest.',
+      credit: 'Programmiert von Mario Wetzka mithilfe von Claude AI.',
     },
     developerMode: {
       title: 'Entwicklermodus',
-      desc: 'Zeigt ein technisches Log beim Laden und in den Einstellungen.',
+      desc: 'Zeigt ein technisches Log beim Laden, unten rechts und in den Einstellungen. Größe per Ziehen am Fensterrand änderbar.',
+    },
+    dashboard: {
+      title: 'Dashboard-Zeitraum',
+      desc: 'Kalendermonat oder Zeitraum seit dem letzten Gehalt (Haupteinnahme).',
+      lockedDesc: 'Der Zeitraum wurde bei der Einrichtung festgelegt und kann nicht mehr geändert werden.',
+      calendarMonth: 'Kalendermonat',
+      sinceLastSalary: 'Seit letztem Gehalt',
+    },
+    accounts: {
+      title: 'Kontopflege',
+      desc: 'Konten anlegen, Hauptkonto wählen und Liquidität verwalten. Bankimport findest du unten.',
+    },
+    data: {
+      title: 'Daten verwalten',
+      desc: 'Löscht unwiderruflich lokale Daten auf diesem Rechner. Vorher exportieren oder sichern, falls nötig.',
+      periodResetHint:
+        'Den Dashboard-Zeitraum (ab wann Buchungen gezählt werden) kannst du nur bei „App zurücksetzen“ in der Einrichtung neu festlegen.',
+      clearTransactions: 'Alle Transaktionen löschen',
+      clearTransactionsConfirm:
+        'Alle Buchungen, Prognosen, Fix-/Variable Kosten, Buys, Schulden, Depot-Positionen und importierte Kontostände unwiderruflich löschen? Nur die Konten (Namen, IBAN, Typ) bleiben erhalten.',
+      resetAll: 'Alle Benutzerdaten löschen',
+      resetApp: 'App zurücksetzen',
+      resetAppConfirm:
+        'Die App wird vollständig zurückgesetzt. Alle Konten, Buchungen und Einstellungen werden gelöscht und die Einrichtung startet von vorn. Fortfahren?',
+      resetAllConfirm:
+        'Wirklich alle Daten löschen (Konten, Prognosen, Fixkosten, Schulden, Depot usw.)? Es bleibt nur ein leeres Hauptkonto. Dieser Schritt kann nicht rückgängig gemacht werden.',
+      exportData: 'Daten exportieren',
+      importData: 'Daten importieren',
+      exportSuccess: '{{message}}',
+      importSuccess: '{{message}}',
+      importConfirm:
+        'Alle lokalen Daten werden durch das Backup ersetzt. Vorher exportieren, falls du etwas behalten willst. Danach lädt die App neu. Fortfahren?',
+    },
+    bankImport: {
+      title: 'Bankexport importieren',
+      manualSetupBlocked:
+        'Bankimport ist bei manueller Einrichtung deaktiviert. Nutze „App zurücksetzen“, um die Einrichtung mit Bankimport neu zu starten.',
+      desc: 'Sparkassen-Exportdatei laden und Umsätze sowie Anfangssaldo in ein Konto übernehmen. Bereits importierte Umsätze werden anhand der Bank-Referenz übersprungen.',
+      verifyHint:
+        'Beim Bankimport können Abweichungen entstehen (z. B. fehlende oder doppelt erkannte Umsätze). Bitte prüfe nach dem Import unter Transaktionen, ob alle Buchungen stimmen.',
+      formatHint:
+        'Empfohlen: „Excel (CSV-CAMT V8)“ — eine Datei statt vieler XMLs im ZIP. Alternativ ZIP-Archiv, CAMT-XML oder MT940.',
+      account: 'Zielkonto',
+      noAccounts: 'Kein Girokonto vorhanden',
+      chooseFile: 'Datei wählen',
+      noFile: 'Keine Datei ausgewählt',
+      import: 'Importieren',
+      importing: 'Import läuft…',
+      fileFilter: 'Bankexport',
+      balanceModalTitle: 'Aktueller Kontostand',
+      balanceModalDesc:
+        'Der Export enthält keinen Saldo. Gib den aktuellen Kontostand deines Kontos ein (Stand heute) — daraus wird der Anfangssaldo aus allen Umsätzen in der Datei bis heute rückgerechnet (auch über mehrere Monate).',
+      balanceModalLabel: 'Kontostand (EUR)',
+      balanceModalConfirm: 'Bestätigen',
+      balanceInvalid: 'Bitte einen gültigen Betrag eingeben (z. B. 1.234,56).',
+      balanceSet: 'Kontostand: {{amount}} €',
+      childBalanceModalTitle: 'Kontostände der Unterspartöpfe',
+      childBalanceModalDesc:
+        'Gib den aktuellen Kontostand jedes Unterspartopfs ein. Daraus wird je Topf der Anfangssaldo aus den zugeordneten Umsätzen rückgerechnet.',
+      childBalancesSet: '{{count}} Spartopf-Kontostände gesetzt',
+      primaryIncomeModalTitle: 'Haupteinnahme wählen',
+      primaryIncomeModalDesc:
+        'Wähle dein Gehalt aus dem Import. Daraus werden Prognose, Fälligkeit und — bei „Seit letztem Gehalt“ — die Rückrechnung abgeleitet.',
+      primaryIncomePick: 'Einnahme aus Import',
+      primaryIncomeName: 'Name der Prognose',
+      primaryIncomeDefaultName: 'Gehalt',
+      primaryIncomeUseImportAmount: 'Prognosebetrag wie Import-Buchung',
+      primaryIncomeCustomAmount: 'Eigener Prognosebetrag (EUR)',
+      primaryIncomeRequired: 'Bitte eine Haupteinnahme auswählen.',
+      primaryIncomeNameRequired: 'Bitte einen Namen für die Prognose eingeben.',
+      primaryIncomeSkip: 'Ohne Haupteinnahme',
+      primaryIncomeSet: 'Haupteinnahme gewählt',
+      resultFormat: 'Format: {{format}}',
+      resultIban: 'IBAN in Datei: {{iban}}',
+      resultImported: '{{count}} Umsätze importiert',
+      resultSkipped: '{{count}} bereits vorhanden',
+      resultTransfers: '{{count}} als Transfer erkannt',
+      resultOpeningBalance: 'Anfangssaldo als Korrektur gesetzt',
+      resultClosingBalance: 'Schlusssaldo laut Datei am {{date}}: {{amount}} EUR',
     },
   },
 
   transactions: {
     title: 'Transaktionen',
     intro:
-      'Manuelle Buchungen auf deinen Konten. Kategorisiere Ausgaben über variable Kosten. Korrekturen setzen den Saldo.',
+      'Manuelle Buchungen auf deinen Konten. Filter „Einnahme“ zeigt nur gebuchte Einnahmen; Prognosen unter „Einnahme (Prognose)“.',
     forecastIntro:
       'Wiederkehrende Einnahmen mit Rhythmus und Fälligkeit. Gebuchte Zahlungen erscheinen unter Transaktionen.',
     stockDepotHint:
       'Für Aktien-Depots können keine manuellen Buchungen erstellt werden — bitte ein anderes Konto wählen.',
     accountLabel: 'Konto',
+    bookingText: 'Buchungstext',
     adjustmentAmount: 'Saldo (EUR)',
     amountLabel: 'Betrag (EUR)',
     empty: 'Keine Transaktionen.',
@@ -162,7 +246,17 @@ export const de = {
     historyHint: 'Korrekturen setzen den Saldo auf den eingegebenen Betrag.',
     titleField: 'Titel',
     titlePlaceholder: 'Einkauf',
+    categoryPlaceholder: 'Variable Kosten oder Fixkosten…',
+    categoryVariable: 'Variable Kosten',
+    categoryFixed: 'Fixkosten',
     undoTransfer: 'Transfer rückgängig',
+    filterType: 'Typ filtern',
+    filterAll: 'Alle Typen',
+    filterCurrentMonth: 'Aktueller Monat',
+    monthPick: 'Monat',
+    linkIncomeForecast: 'Einnahmeprognose',
+    linkIncomeForecastHint: 'Ordnet diese Buchung einem Prognose-Termin zu. Die Prognose verschwindet je nach Rhythmus aus den offenen Buchungen.',
+    linkIncomeForecastNone: 'Keine Zuordnung',
     kinds: {
       income: 'Einnahme',
       expense: 'Ausgabe',
@@ -171,6 +265,8 @@ export const de = {
       buy_apply: 'Einkauf gebucht',
       buy_planned: 'Einkauf geplant',
       adjustment: 'Korrektur',
+      income_forecast: 'Einnahme (Prognose)',
+      expense_forecast: 'Ausgabe (Prognose)',
       forecast: 'Prognose',
     },
   },
@@ -178,7 +274,7 @@ export const de = {
   buyList: {
     title: 'Einkaufszettel',
     intro:
-      'Geplante Käufe werden im Dashboard berücksichtigt. Mit dem Haken wird die Ausgabe heute real gebucht (Hauptkonto).',
+      'Geplante Käufe fließen in die Dashboard-Ausgaben ein. Mit „Real“ buchst du den Betrag heute auf dem Hauptkonto.',
     newEntry: 'Neuer Eintrag',
     editEntry: 'Eintrag bearbeiten',
     namePlaceholder: 'Neuer Laptop',
@@ -193,7 +289,7 @@ export const de = {
   variableCosts: {
     title: 'Variable Kosten',
     intro:
-      'Monatlich wiederkehrende Kosten (ab 06/2026). Budget = Prognose; Tatsächlich = kategorisierte Transaktionen.',
+      'Monatlich wiederkehrende Kosten als Budget (Prognose). Tatsächliche Werte entstehen aus kategorisierten Transaktionen.',
     newEntry: 'Neuer Eintrag',
     editEntry: 'Eintrag bearbeiten',
     formHint:
@@ -207,11 +303,16 @@ export const de = {
 
   fixedCosts: {
     title: 'Fixkosten',
-    intro: 'Wiederkehrende Abbuchungen — standardmäßig vom Hauptkonto, Konto wählbar.',
+    intro:
+      'Wiederkehrende Abbuchungen mit Rhythmus und Fälligkeit (fester Tag, 1. oder letzter Bankarbeitstag) — standardmäßig vom Hauptkonto.',
     newEntry: 'Neuer Eintrag',
     editEntry: 'Eintrag bearbeiten',
     namePlaceholder: 'Miete',
-    listHint: 'Fixkosten werden automatisch zum Fälligkeitstermin vom gewählten Konto abgebucht.',
+    listHint: 'Auf den Namen klicken für die Buchungshistorie. Fixkosten werden automatisch zum Fälligkeitstermin abgebucht.',
+    historyIntro: 'Alle vergangenen Ist-Buchungen, die dieser Fixkosten zugeordnet sind.',
+    historyEmpty: 'Noch keine zugeordneten Buchungen.',
+    formHint:
+      'Wiederkehrende Fixkosten mit Rhythmus und Fälligkeit — Abbuchungen erfolgen automatisch zum Termin.',
   },
 
   accounts: {
@@ -228,6 +329,10 @@ export const de = {
     transferHistory: 'Transfer-Historie',
     transferHint: 'Interne Umbuchungen zwischen deinen Konten — kein Geld fließt nach außen.',
     editName: 'Name bearbeiten',
+    editAccount: 'Konto bearbeiten',
+    iban: 'IBAN',
+    ibanPlaceholder: 'DE89…',
+    ibanHint: 'Für automatische Transfer-Erkennung beim Bankimport zwischen deinen Konten.',
     balanceSource: 'Saldoquelle',
     balanceSourceLedger: 'Manuell (Buchungen)',
     balanceSourceStock: 'Aktien-Depot (live)',
@@ -237,6 +342,21 @@ export const de = {
     mainAccountSuffix: ' (Hauptkonto)',
     toggleLiquid: 'Liquid umschalten',
     defaultTransferTitle: 'Transfer',
+    accountKind: 'Kontotyp',
+    kindStandard: 'Standard (Giro)',
+    kindSpartopf: 'Spartopf',
+    kindOberspartopf: 'Oberspartopf',
+    kindDepot: 'Aktiendepot',
+    parentOberspartopf: 'Oberspartopf',
+    parentOberspartopfNone: '— keiner —',
+    parentOberspartopfHint: 'Optional: mehrere Spartöpfe können einem Oberspartopf zugeordnet werden.',
+    spartopfNameHint:
+      'Name wie im Überweisungstext, damit Zahlungen dem richtigen Topf zugeordnet werden.',
+    oberspartopfNameHint:
+      'Sammelkonto — Saldo ergibt sich aus den Unterspartöpfen. IBAN für eingehende Überweisungen angeben.',
+    oberspartopfIbanHint:
+      'IBAN des Sparkontos. Überweisungen werden anhand des Verwendungszwecks den Unterspartöpfen zugeordnet.',
+    oberspartopfAggregate: 'Oberspartopf (Summe aller Spartöpfe)',
   },
 
   expenseGroups: {
@@ -260,7 +380,10 @@ export const de = {
     events: 'Ereignisse',
     eventsOnDay: 'Ereignisse am {{date}}',
     noEvents: 'Keine Ereignisse.',
+    runningSubtotal: 'Zwischensumme',
     resetFilter: 'Filter zurücksetzen',
+    refreshCalculations: 'Berechnungen aktualisieren',
+    refreshingCalculations: 'Aktualisiere…',
     cards: {
       kontostand: 'Kontostand',
       kontostandDeltaPrevMonth: 'Δ zum Vormonat',
@@ -269,11 +392,15 @@ export const de = {
       startLiquid: 'Start Liquide Mittel (Prognose)',
       income: 'Einnahmen',
       incomeWithMonth: 'Einnahmen ({{month}})',
+      incomeWithPeriod: 'Einnahmen ({{period}})',
       expenses: 'Ausgaben',
       expensesWithMonth: 'Ausgaben ({{month}})',
+      expensesWithPeriod: 'Ausgaben ({{period}})',
       net: 'Differenz (Einnahmen − Ausgaben)',
       fixedCosts: 'Fixkosten',
+      remainingFixedCosts: 'Verbleibende Fixkosten',
       variableCosts: 'Variable Kosten',
+      remainingVariableCosts: 'Verbleibende variable Kosten',
       buys: 'Buys (angew./geplant)',
       debtOwed: 'Schulden an mich',
       debtIOwe: 'Meine Schulden',
@@ -294,14 +421,21 @@ export const de = {
       startLiquid:
         'Liquide Mittel zu Monatsbeginn (Prognose). Erster Monat: Backend-Prognose (Korrekturen + Forecasts auf liquiden Konten), danach: Ende liquide Vormonat.',
       income:
-        'Einnahmen im gewählten Monat (gebucht + offene Prognosen). Einnahmen am letzten Bankarbeitstag — auch wenn bereits gebucht — zählen erst im Folgemonat.',
-      expenses: 'Ausgaben im gewählten Monat (gebucht + Prognosen) — ohne Transfers, Korrekturen und reine Depot-Käufe.',
+        'Einnahmen im gewählten Zeitraum (gebucht + offene Prognosen). Einnahmen am letzten Bankarbeitstag zählen erst im Folgemonat. Klick filtert die Ereignisliste.',
+      expenses:
+        'Ausgaben im gewählten Zeitraum (gebucht + Prognosen) — ohne Transfers, Korrekturen und reine Depot-Käufe. Klick filtert die Ereignisliste.',
       net: 'Einnahmen minus Ausgaben im gewählten Monat.',
       fixedCosts: 'Wiederkehrende Fixkosten im Monat. Klick filtert die Ereignisliste.',
+      remainingFixedCosts:
+        'Offene Fixkosten im Monat: geplante Termine minus bereits zugeordnete Ausgaben (Ist-Betrag der Buchung).',
       variableCosts: 'Variable Monatskosten (Prognose oder Ist). Klick filtert die Ereignisliste.',
+      remainingVariableCosts:
+        'Verbleibendes Budget in den variablen Kosten-Geldtopf: Prognose minus bereits kategorisierte Ausgaben.',
       buys: 'Angewendete Kaufposten und geplante Käufe im Monat.',
-      debtOwed: 'Offene Forderungen — Beträge, die dir andere schulden.',
-      debtIOwe: 'Offene Verbindlichkeiten — Beträge, die du anderen schuldest.',
+      debtOwed:
+        'Offene Forderungen — Beträge, die dir andere schulden. Nur in der Gesamtübersicht (Alle Konten), fließen nicht in Kontosalden ein.',
+      debtIOwe:
+        'Offene Verbindlichkeiten — Beträge, die du anderen schuldest. Nur in der Gesamtübersicht (Alle Konten), fließen nicht in Kontosalden ein.',
       endBalance:
         'Prognostizierter Endsaldo = Startsaldo + Einnahmen − Ausgaben des Monats. Gleichzeitig Startsaldo des Folgemonats.',
       deltaBalance: 'Veränderung vom Startsaldo zum Endsaldo (= Einnahmen − Ausgaben).',
@@ -370,7 +504,7 @@ export const de = {
   debts: {
     title: 'Schulden',
     intro:
-      'Forderungen und Verbindlichkeiten pro Person — getrennt von deinen Konten, nur zur Nachverfolgung.',
+      'Forderungen und Verbindlichkeiten pro Person — getrennt von Kontobuchungen, nur zur Nachverfolgung. Im Dashboard nur bei „Alle Konten“ sichtbar.',
     newPerson: 'Neue Person',
     formHint:
       'Lege eine Person an, um Forderungen und Verbindlichkeiten getrennt von Kontobuchungen zu verfolgen.',
@@ -394,5 +528,89 @@ export const de = {
     },
     entryPlaceholder: 'Eintrag',
     kind: 'Art',
+  },
+  onboarding: {
+    title: 'Willkommen bei FinanzBuddy',
+    subtitle: 'Richte die App in wenigen Schritten ein. Du kannst jederzeit zurückgehen.',
+    modeTitle: 'Wie möchtest du starten?',
+    modeHint: 'Manuell: Kontostände selbst eingeben. Bankimport (Beta): CSV-Export der Bank laden.',
+    manualTitle: 'Manuell',
+    manualDesc: 'Kontostände eingeben, optional Haupteinnahme als Prognose anlegen.',
+    bankTitle: 'Bankimport (Beta)',
+    bankDesc: 'Konten mit IBAN, CSV-Import und automatische Haupteinnahme.',
+    bankVerifyHint:
+      'Beim Bankimport können Abweichungen entstehen. Bitte prüfe nach dem Import unter Transaktionen, ob alle Buchungen stimmen.',
+    accountsTitle: 'Konten anlegen',
+    accountsHint:
+      'Ein liquid Giro-Hauptkonto ist Pflicht. Lege optional einen Oberspartopf mit IBAN an und ordne Unterspartöpfe zu — deren Saldo gibst du später ein, nicht den des Oberspartopfs.',
+    mainAccountTitle: 'Hauptkonto',
+    mainAccountHint: 'Name und IBAN des Girokontos. Die IBAN wird für den Bankimport benötigt.',
+    otherAccounts: 'Weitere Konten',
+    editAccount: 'Bearbeiten',
+    addAccount: 'Konto hinzufügen',
+    periodTitle: 'Dashboard-Zeitraum',
+    periodHint:
+      'Diese Wahl gilt dauerhaft für die App. Kalendermonat oder Gehaltszeiträume ab der Haupteinnahme.',
+    bankFilesTitle: 'Bankexporte laden',
+    bankFilesHint: 'Für das Hauptkonto ist genau eine CSV-Datei erforderlich. Für andere Konten optional je eine Datei.',
+    pickFile: 'Datei wählen',
+    noFile: 'Keine Datei',
+    bankIncomeTitle: 'Haupteinnahme',
+    bankIncomeHint:
+      'Wähle die Arbeitgeber-IBAN deines Gehalts. Die Einnahmen im Import dienen nur zur Info — der Prognosebetrag wird manuell eingegeben.',
+    bankIncomePickIban: 'Arbeitgeber-IBAN',
+    bankIncomeSelectIban: 'IBAN wählen…',
+    bankIncomePreview: 'Einnahmen dieser IBAN im Import',
+    bankIncomePreviewEmpty: 'Keine Einnahmen mit Gegenpartei-IBAN im Import gefunden.',
+    bankIncomeForecastAmount: 'Prognosebetrag (EUR)',
+    bankIncomeForecastAmountHint: 'Gilt für zukünftige Prognose-Termine. Import-Buchungen bleiben unverändert.',
+    bankIncomeFirstSalary: 'Erste Gehaltsbuchung: {{date}} — Startkontostand am {{balanceDate}}',
+    bankIncomeDueRule: 'Fälligkeit (monatlich)',
+    bankIncomeDayOfMonth: 'Kalendertag',
+    bankIncomeOptional:
+      'Wähle die Arbeitgeber-IBAN, damit die erste Haupteinnahme und der Dashboard-Zeitraum erkannt werden.',
+    bankBalanceTitle: 'Startkontostand',
+    bankBalanceHint:
+      'Gib den Kontostand je Konto am {{date}} an — einen Tag vor der ersten Gehaltsbuchung der gewählten IBAN. Umsätze davor werden ignoriert.',
+    bankBalanceHintImport:
+      'Für den Bankimport: Kontostand am {{date}} (Tag vor der ersten Gehaltsbuchung). Dieser Stichtag dient nur dem Import-Anker.',
+    bankCalendarBalanceTitle: 'Dashboard-Startkontostand (Kalendermonat)',
+    bankCalendarBalanceHint:
+      'Für das Dashboard im Kalendermonat-Modus: Kontostände am {{date}} — dem 1. Tag des Monats nach der ersten Haupteinnahme.',
+    bankCalendarBalanceLabel: 'Kontostand am {{date}} (EUR)',
+    bankBalanceOberspartopfHint:
+      'Oberspartöpfe haben keinen eigenen Kontostand — nur die zugeordneten Unterspartöpfe (und alle anderen Konten).',
+    bankBalanceLabel: 'Kontostand am {{date}} (EUR)',
+    bankIncomeUseImportAmount: 'Prognosebetrag wie Import-Buchung',
+    bankIncomeCustomAmount: 'Eigener Prognosebetrag (EUR)',
+    bankIncomeCustomAmountHint: 'Gilt nur für zukünftige Prognose-Termine; die Import-Buchung bleibt unverändert.',
+    manualBalancesTitle: 'Startsaldo je Konto',
+    manualBalancesHint: 'Aktueller Kontostand je Konto. Der erste Zeitraum beginnt heute.',
+    manualIncomeTitle: 'Haupteinnahme (Prognose)',
+    manualIncomeHint: 'Lege dein Gehalt als monatliche Prognose an. Du kannst sie später bearbeiten.',
+    manualIncomeSkip: 'Im Kalendermonat-Modus kannst du diesen Schritt überspringen.',
+    costsTitle: 'Fix- & variable Kosten (optional)',
+    costsHint: 'Lege Fix- und variable Kosten an oder überspringe diesen Schritt.',
+    costsFixedTitle: 'Fixkosten',
+    costsVariableTitle: 'Variable Kosten',
+    costsAddFixed: 'Fixkosten hinzufügen',
+    costsAddVariable: 'Variable Kosten hinzufügen',
+    costsRemove: 'Entfernen',
+    reviewTitle: 'Zusammenfassung',
+    reviewMode: 'Modus',
+    reviewPeriod: 'Zeitraum',
+    reviewAccounts: 'Konten',
+    finish: 'Einrichtung abschließen',
+    errorMode: 'Bitte wähle Manuell oder Bankimport.',
+    errorMainAccount: 'Bitte lege ein Hauptkonto (Standard/Giro) an.',
+    errorMainLiquid: 'Das Hauptkonto muss als liquid markiert sein.',
+    errorMainIban: 'Für Bankimport ist die IBAN des Hauptkontos erforderlich.',
+    errorEmployerIban: 'Bitte eine Arbeitgeber-IBAN mit Einnahmen im Import wählen.',
+    errorForecastAmount: 'Bitte einen Prognosebetrag eingeben.',
+    errorMainImport: 'Bitte lade den Bankexport für das Hauptkonto.',
+    errorMainBalance: 'Bitte gib den Startsaldo für das Hauptkonto an.',
+    errorAccountBalance: 'Bitte gib den Kontostand für „{{name}}“ an.',
+    errorManualIncome: 'Bitte Name und Betrag der Haupteinnahme angeben.',
+    errorIncompleteBank: 'Bankimport unvollständig — prüfe Datei, Gehalt und Kontostand.',
   },
 } as const;

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Account, Cadence, FixedCost, FixedCostDueRule, IsoDate } from '../lib/types';
+import { useLocation } from 'react-router-dom';
+import type { Account, Cadence, FixedCost, FixedCostDueRule, IsoDate, LedgerTransaction } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Checkbox } from '../components/common/Checkbox';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
 import { formatDisplayDate, isoToday } from '../lib/date';
+import { dueRuleShort } from '../lib/transactionList';
 import { useLocale } from '../i18n/LocaleProvider';
 import { formatExpenseEurFromCents, parseEurToCents } from '../lib/money';
 import {
@@ -13,6 +15,7 @@ import {
   deleteFixedCost,
   listAccounts,
   listFixedCosts,
+  listLedgerTransactions,
   previewFixedCost,
   updateFixedCost,
 } from '../tauri/api';
@@ -21,6 +24,7 @@ import { ListPanel } from '../components/layout/ListPanel';
 import { PageShell } from '../components/layout/PageShell';
 import { DateInput } from '../components/DateInput';
 import { EditIconButton } from '../components/EditIconButton';
+import { FixedCostHistoryModal } from '../components/transactions/FixedCostHistoryModal';
 import { TrashIconButton } from '../components/TrashIconButton';
 
 const TABLE_COLS = 'minmax(140px, 1.5fr) 110px 120px 130px minmax(150px, 1.5fr) 110px minmax(120px, 1fr) 72px';
@@ -81,20 +85,28 @@ function formFromRow(r: FixedCost): FixedCostFormState {
 export function FixedCostsPage() {
   const ui = useUi();
   const { t } = useLocale();
+  const location = useLocation();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [rows, setRows] = useState<FixedCost[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Record<string, IsoDate[]>>({});
+  const [ledgerRows, setLedgerRows] = useState<LedgerTransaction[]>([]);
+  const [historyFixedCost, setHistoryFixedCost] = useState<FixedCost | null>(null);
 
   const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts]);
   const mainAccountId = useMemo(() => defaultMainAccountId(accounts), [accounts]);
 
   async function refresh() {
-    const [accountRows, data] = await Promise.all([listAccounts(), listFixedCosts()]);
+    const [accountRows, data, ledger] = await Promise.all([
+      listAccounts(),
+      listFixedCosts(),
+      listLedgerTransactions({}),
+    ]);
     setAccounts(accountRows);
     setRows(data);
+    setLedgerRows(ledger);
     const entries = await Promise.all(
       data.map(async (row) => {
         try {
@@ -111,6 +123,14 @@ export function FixedCostsPage() {
   useEffect(() => {
     refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  useEffect(() => {
+    const editId = (location.state as { editId?: string } | null)?.editId;
+    if (!editId) return;
+    setEditingId(editId);
+    setModalOpen(true);
+    window.history.replaceState({}, document.title);
+  }, [location.state]);
 
   function openCreate() {
     setEditingId(null);
@@ -153,17 +173,20 @@ export function FixedCostsPage() {
             rows.map((r) => (
               <div key={r.id}>
                 <div style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
-                  <div style={ui.tdName}>{r.name}</div>
+                  <button
+                    type="button"
+                    className="fh-link-button"
+                    style={ui.nameLink}
+                    onClick={() => setHistoryFixedCost(r)}
+                  >
+                    {r.name}
+                  </button>
                   <div style={ui.tdCenter}>{cadenceLabel(r.cadence, t)}</div>
                   <TdAmount col="amount" amountCents={-r.amountCents}>
                     {formatExpenseEurFromCents(r.amountCents)}
                   </TdAmount>
                   <div style={ui.tdMono}>{formatDisplayDate(r.firstChargeDate)}</div>
-                  <div style={ui.tdCenter}>
-                    {r.dueRule === 'first_business_day'
-                      ? t('common.firstBusinessDayShort')
-                      : `${t('common.day')} ${r.dayOfMonth ?? 1}`}
-                  </div>
+                  <div style={ui.tdCenter}>{dueRuleShort(r.dueRule, r.dayOfMonth, t)}</div>
                   <div style={ui.tdMono}>{r.endChargeDate ? formatDisplayDate(r.endChargeDate) : '—'}</div>
                   <div style={{ ...ui.tdCenter, fontSize: 13 }}>{accountMap.get(r.accountId) ?? '—'}</div>
                   <div style={ui.tdActions}>
@@ -180,6 +203,14 @@ export function FixedCostsPage() {
           )}
         </AmountTable>
       </ListPanel>
+
+      <FixedCostHistoryModal
+        open={historyFixedCost !== null}
+        fixedCost={historyFixedCost}
+        ledger={ledgerRows}
+        accounts={accounts}
+        onClose={() => setHistoryFixedCost(null)}
+      />
 
       <FixedCostModal
         open={modalOpen}
@@ -320,6 +351,7 @@ function FixedCostModal({
             >
               <option value="calendar_day">{t('dueRule.calendar_day')}</option>
               <option value="first_business_day">{t('dueRule.first_business_day')}</option>
+              <option value="last_business_day">{t('dueRule.last_business_day')}</option>
             </select>
           </label>
           <label>

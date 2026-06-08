@@ -187,6 +187,23 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   migrate_income_forecasts_v2(conn)?;
   migrate_income_forecasts_v3(conn)?;
   migrate_income_forecasts_v4(conn)?;
+  try_add_column(conn, "accounts", "balance_source", "TEXT")?;
+  try_add_column(conn, "accounts", "account_kind", "TEXT")?;
+  try_add_column(conn, "accounts", "parent_account_id", "TEXT")?;
+  try_add_column(conn, "accounts", "iban", "TEXT")?;
+  conn.execute(
+    "UPDATE accounts SET balance_source = 'ledger' WHERE balance_source IS NULL",
+    [],
+  )?;
+  conn.execute(
+    "UPDATE accounts SET account_kind = 'standard' WHERE account_kind IS NULL",
+    [],
+  )?;
+  crate::accounts::migrate_depot_account_kind(conn)?;
+  conn.execute(
+    "UPDATE accounts SET balance_source = 'stock_portfolio' WHERE name = 'TradeRepublic ETFs & Aktien' AND balance_source = 'ledger'",
+    [],
+  )?;
   try_add_column(conn, "variable_costs", "charge_day", "INTEGER")?;
   try_add_column(conn, "variable_costs", "date", "TEXT")?;
   conn.execute(
@@ -215,17 +232,11 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   migrate_stock_lot_transfers(conn)?;
   migrate_pre_tracking_income_to_adjustments(conn)?;
   migrate_adjustments_to_absolute_balance(conn)?;
+  restore_bank_import_income_kind(conn)?;
+  migrate_ledger_internal_transfers(conn)?;
+  migrate_ledger_internal_transfers_v2(conn)?;
   crate::accounts::migrate_main_account_setting(conn)?;
   migrate_remove_depot_ledger_entries(conn)?;
-  try_add_column(conn, "accounts", "balance_source", "TEXT")?;
-  conn.execute(
-    "UPDATE accounts SET balance_source = 'ledger' WHERE balance_source IS NULL",
-    [],
-  )?;
-  conn.execute(
-    "UPDATE accounts SET balance_source = 'stock_portfolio' WHERE name = 'TradeRepublic ETFs & Aktien' AND balance_source = 'ledger'",
-    [],
-  )?;
   try_add_column(conn, "fixed_costs", "account_id", "TEXT")?;
   conn.execute(
     "UPDATE fixed_costs SET account_id = (
@@ -239,7 +250,22 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
     ) WHERE account_id IS NULL",
     [],
   )?;
+  try_add_column(conn, "income_forecasts", "account_id", "TEXT")?;
+  try_add_column(conn, "variable_costs", "account_id", "TEXT")?;
+  conn.execute(
+    "UPDATE income_forecasts SET account_id = (
+      SELECT id FROM accounts ORDER BY created_at ASC LIMIT 1
+    ) WHERE account_id IS NULL",
+    [],
+  )?;
+  conn.execute(
+    "UPDATE variable_costs SET account_id = (
+      SELECT id FROM accounts ORDER BY created_at ASC LIMIT 1
+    ) WHERE account_id IS NULL",
+    [],
+  )?;
   try_add_column(conn, "ledger_transactions", "variable_cost_id", "TEXT")?;
+  try_add_column(conn, "ledger_transactions", "fixed_cost_id", "TEXT")?;
   try_add_column(conn, "variable_cost_actuals", "actual_source", "TEXT")?;
   try_add_column(conn, "variable_costs", "icon", "TEXT")?;
   try_add_column(conn, "variable_costs", "color", "TEXT")?;
@@ -266,6 +292,10 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
 
   // Migrate income month -> date (legacy index removed in v2 migration)
   conn.execute("DROP INDEX IF EXISTS idx_income_forecasts_date", [])?;
+
+  crate::setup::ensure_setup_migrated(conn)?;
+  crate::accounts::ensure_timeframe_config_migrated(conn)?;
+  crate::dashboard_cache::ensure_schema(conn)?;
 
   Ok(())
 }
@@ -381,10 +411,43 @@ fn migrate_stock_lot_transfers(conn: &Connection) -> AppResult<()> {
 }
 
 fn migrate_pre_tracking_income_to_adjustments(conn: &Connection) -> AppResult<()> {
+  let done: Option<String> = conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = 'pre_tracking_income_to_adjustments_v1'",
+      [],
+      |r| r.get(0),
+    )
+    .optional()?;
+  if done.is_some() {
+    return Ok(());
+  }
   conn.execute(
     "UPDATE ledger_transactions SET kind = 'adjustment' WHERE kind = 'income' AND date < '2026-05-29'",
     [],
   )?;
+  conn.execute(
+    "INSERT INTO app_settings (key, value) VALUES ('pre_tracking_income_to_adjustments_v1', '1')",
+    [],
+  )?;
+  Ok(())
+}
+
+/// Bank-Import- und Prognose-Einnahmen dürfen nicht als adjustment hängen bleiben.
+fn restore_bank_import_income_kind(conn: &Connection) -> AppResult<()> {
+  let changed = conn.execute(
+    "UPDATE ledger_transactions SET kind = 'income', icon = 'banknote', color = '#22c55e'
+     WHERE kind = 'adjustment' AND amount_cents > 0
+       AND title != 'Bankimport Anfangssaldo'
+       AND title != 'Startsaldo (migriert)'
+       AND (
+         (COALESCE(source_id, '') LIKE 'bank_import:%' AND COALESCE(source_id, '') NOT LIKE 'bank_import:opbd:%')
+         OR COALESCE(source_id, '') LIKE 'income_forecast:%'
+       )",
+    [],
+  )?;
+  if changed > 0 {
+    let _ = crate::dashboard_cache::invalidate(conn);
+  }
   Ok(())
 }
 
@@ -393,6 +456,345 @@ fn migrate_adjustments_to_absolute_balance(conn: &Connection) -> AppResult<()> {
     "UPDATE ledger_transactions SET amount_cents = ABS(amount_cents) WHERE kind = 'adjustment'",
     [],
   )?;
+  Ok(())
+}
+
+/// Kennzeichnet Import-Umbuchungen zwischen eigenen Konten (IBAN) und stellt fälschlich
+/// als adjustment migrierte Bank-Import-Einnahmen wieder her.
+fn migrate_ledger_internal_transfers(conn: &Connection) -> AppResult<()> {
+  let done: Option<String> = conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = 'ledger_internal_transfers_v1'",
+      [],
+      |r| r.get(0),
+    )
+    .optional()?;
+  if done.is_some() {
+    return Ok(());
+  }
+
+  try_add_column(conn, "ledger_transactions", "internal_transfer", "INTEGER NOT NULL DEFAULT 0")?;
+  conn.execute(
+    "UPDATE ledger_transactions SET internal_transfer = 1
+     WHERE kind = 'transfer'
+       AND (COALESCE(source_id, '') LIKE 'bank_import:transfer:%'
+            OR COALESCE(source_id, '') LIKE 'bank_import:internal:%')",
+    [],
+  )?;
+
+  let iban_map = crate::accounts::load_account_iban_map(conn)?;
+  let mut stmt = conn.prepare(
+    "SELECT id, kind, title, amount_cents, date, account_id, notes, source_id, internal_transfer
+     FROM ledger_transactions
+     WHERE COALESCE(source_id, '') LIKE 'bank_import:%'
+       AND COALESCE(source_id, '') NOT LIKE 'bank_import:opbd:%'
+       AND title != 'Bankimport Anfangssaldo'
+       AND kind IN ('adjustment', 'income', 'expense')",
+  )?;
+  let rows = stmt
+    .query_map([], |r| {
+      Ok((
+        r.get::<_, String>(0)?,
+        r.get::<_, String>(1)?,
+        r.get::<_, String>(2)?,
+        r.get::<_, i64>(3)?,
+        r.get::<_, String>(4)?,
+        r.get::<_, Option<String>>(5)?,
+        r.get::<_, Option<String>>(6)?,
+        r.get::<_, Option<String>>(7)?,
+        r.get::<_, i64>(8)?,
+      ))
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+
+  for (id, kind, title, amount_cents, date, account_id, notes, _source_id, already_internal) in rows {
+    if already_internal != 0 {
+      continue;
+    }
+    let Some(account_id) = account_id.filter(|s| !s.is_empty()) else {
+      continue;
+    };
+    let match_text = format!("{} {}", title, notes.as_deref().unwrap_or(""));
+    let counterparty_iban = notes
+      .as_deref()
+      .and_then(crate::bank_import::extract_iban_from_notes_for_migration);
+    let Some(other_id) = crate::accounts::resolve_internal_transfer_counterparty(
+      conn,
+      &iban_map,
+      counterparty_iban.as_deref(),
+      &match_text,
+    ) else {
+      if kind == "adjustment" && amount_cents > 0 {
+        conn.execute(
+          "UPDATE ledger_transactions SET kind = 'income', amount_cents = ABS(amount_cents) WHERE id = ?1",
+          rusqlite::params![id],
+        )?;
+      }
+      continue;
+    };
+    if other_id == account_id {
+      continue;
+    }
+
+    let importing_kind: String = conn.query_row(
+      "SELECT COALESCE(account_kind, 'standard') FROM accounts WHERE id = ?1",
+      rusqlite::params![account_id],
+      |r| r.get(0),
+    )?;
+    let target_on_outflow =
+      crate::accounts::resolve_transfer_target_account(conn, &other_id, &match_text)?;
+    let (from_account_id, to_account_id) = if kind == "expense" || amount_cents < 0 {
+      (account_id.clone(), target_on_outflow)
+    } else if importing_kind == "spartopf" {
+      (other_id.clone(), account_id.clone())
+    } else if importing_kind == "oberspartopf" {
+      let child =
+        crate::accounts::resolve_transfer_target_account(conn, &account_id, &match_text)?;
+      (other_id.clone(), child)
+    } else {
+      (other_id.clone(), account_id.clone())
+    };
+    let amount = amount_cents.abs();
+    let internal_source = format!(
+      "bank_import:internal:{date}:{amount}:{from_account_id}:{to_account_id}:{id}"
+    );
+    conn.execute(
+      "UPDATE ledger_transactions SET
+         kind = 'transfer',
+         internal_transfer = 1,
+         account_id = NULL,
+         from_account_id = ?2,
+         to_account_id = ?3,
+         amount_cents = ?4,
+         source_id = ?5,
+         icon = 'arrow-left-right',
+         color = '#64748b'
+       WHERE id = ?1",
+      rusqlite::params![id, from_account_id, to_account_id, amount, internal_source],
+    )?;
+  }
+
+  conn.execute(
+    "INSERT INTO app_settings (key, value) VALUES ('ledger_internal_transfers_v1', '1')",
+    [],
+  )?;
+  let _ = crate::dashboard_cache::invalidate(conn);
+  Ok(())
+}
+
+fn internal_transfer_proven_by_iban(
+  iban_map: &std::collections::HashMap<String, String>,
+  from_id: &str,
+  to_id: &str,
+  notes: Option<&str>,
+) -> bool {
+  let Some(iban) = notes.and_then(crate::bank_import::extract_iban_from_notes_for_migration) else {
+    return false;
+  };
+  let Some(counterparty_id) = iban_map.get(&iban) else {
+    return false;
+  };
+  counterparty_id == from_id || counterparty_id == to_id
+}
+
+fn revert_false_internal_transfer(
+  conn: &Connection,
+  id: &str,
+  amount_cents: i64,
+  from_id: &str,
+  to_id: &str,
+) -> AppResult<()> {
+  let from_kind: String = conn.query_row(
+    "SELECT COALESCE(account_kind, 'standard') FROM accounts WHERE id = ?1",
+    rusqlite::params![from_id],
+    |r| r.get(0),
+  )?;
+  let to_kind: String = conn.query_row(
+    "SELECT COALESCE(account_kind, 'standard') FROM accounts WHERE id = ?1",
+    rusqlite::params![to_id],
+    |r| r.get(0),
+  )?;
+  let (kind, account_id, signed_amount, icon, color) = if from_kind == "standard"
+    && (to_kind == "spartopf" || to_kind == "oberspartopf")
+  {
+    (
+      "expense",
+      from_id.to_string(),
+      -amount_cents,
+      "shop",
+      "#ef4444",
+    )
+  } else {
+    (
+      "income",
+      to_id.to_string(),
+      amount_cents,
+      "banknote",
+      "#22c55e",
+    )
+  };
+  conn.execute(
+    "UPDATE ledger_transactions SET
+       kind = ?2,
+       internal_transfer = 0,
+       account_id = ?3,
+       from_account_id = NULL,
+       to_account_id = NULL,
+       amount_cents = ?4,
+       icon = ?5,
+       color = ?6
+     WHERE id = ?1",
+    rusqlite::params![id, kind, account_id, signed_amount, icon, color],
+  )?;
+  Ok(())
+}
+
+/// Korrigiert fälschlich per Namens-Matching gesetzte interne Transfers (v1) und stellt
+/// Bank-Import-Einnahmen ohne IBAN-Treffer wieder her.
+fn migrate_ledger_internal_transfers_v2(conn: &Connection) -> AppResult<()> {
+  let done: Option<String> = conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = 'ledger_internal_transfers_v2'",
+      [],
+      |r| r.get(0),
+    )
+    .optional()?;
+  if done.is_some() {
+    return Ok(());
+  }
+
+  let iban_map = crate::accounts::load_account_iban_map(conn)?;
+  let mut stmt = conn.prepare(
+    "SELECT id, amount_cents, from_account_id, to_account_id, notes
+     FROM ledger_transactions
+     WHERE kind = 'transfer' AND internal_transfer = 1",
+  )?;
+  let rows = stmt
+    .query_map([], |r| {
+      Ok((
+        r.get::<_, String>(0)?,
+        r.get::<_, i64>(1)?,
+        r.get::<_, Option<String>>(2)?,
+        r.get::<_, Option<String>>(3)?,
+        r.get::<_, Option<String>>(4)?,
+      ))
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+
+  for (id, amount_cents, from_id, to_id, notes) in rows {
+    let (Some(from_id), Some(to_id)) = (from_id, to_id) else {
+      continue;
+    };
+    if internal_transfer_proven_by_iban(&iban_map, &from_id, &to_id, notes.as_deref()) {
+      continue;
+    }
+    revert_false_internal_transfer(conn, &id, amount_cents, &from_id, &to_id)?;
+  }
+
+  conn.execute(
+    "UPDATE ledger_transactions SET kind = 'income', icon = 'banknote', color = '#22c55e'
+     WHERE kind = 'adjustment' AND amount_cents > 0
+       AND COALESCE(source_id, '') LIKE 'bank_import:%'
+       AND COALESCE(source_id, '') NOT LIKE 'bank_import:opbd:%'
+       AND title != 'Bankimport Anfangssaldo'",
+    [],
+  )?;
+
+  let mut stmt = conn.prepare(
+    "SELECT id, kind, title, amount_cents, date, account_id, notes, source_id, internal_transfer
+     FROM ledger_transactions
+     WHERE COALESCE(source_id, '') LIKE 'bank_import:%'
+       AND COALESCE(source_id, '') NOT LIKE 'bank_import:opbd:%'
+       AND title != 'Bankimport Anfangssaldo'
+       AND kind IN ('adjustment', 'income', 'expense')",
+  )?;
+  let rows = stmt
+    .query_map([], |r| {
+      Ok((
+        r.get::<_, String>(0)?,
+        r.get::<_, String>(1)?,
+        r.get::<_, String>(2)?,
+        r.get::<_, i64>(3)?,
+        r.get::<_, String>(4)?,
+        r.get::<_, Option<String>>(5)?,
+        r.get::<_, Option<String>>(6)?,
+        r.get::<_, Option<String>>(7)?,
+        r.get::<_, i64>(8)?,
+      ))
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+
+  for (id, kind, title, amount_cents, date, account_id, notes, _source_id, already_internal) in rows {
+    if already_internal != 0 {
+      continue;
+    }
+    let Some(account_id) = account_id.filter(|s| !s.is_empty()) else {
+      continue;
+    };
+    let match_text = format!("{} {}", title, notes.as_deref().unwrap_or(""));
+    let counterparty_iban = notes
+      .as_deref()
+      .and_then(crate::bank_import::extract_iban_from_notes_for_migration);
+    let Some(other_id) = crate::accounts::resolve_internal_transfer_counterparty(
+      conn,
+      &iban_map,
+      counterparty_iban.as_deref(),
+      &match_text,
+    ) else {
+      continue;
+    };
+    if other_id == account_id {
+      continue;
+    }
+
+    let importing_kind: String = conn.query_row(
+      "SELECT COALESCE(account_kind, 'standard') FROM accounts WHERE id = ?1",
+      rusqlite::params![account_id],
+      |r| r.get(0),
+    )?;
+    let target_on_outflow =
+      crate::accounts::resolve_transfer_target_account(conn, &other_id, &match_text)?;
+    let (from_account_id, to_account_id) = if kind == "expense" || amount_cents < 0 {
+      (account_id.clone(), target_on_outflow)
+    } else if importing_kind == "spartopf" {
+      (other_id.clone(), account_id.clone())
+    } else if importing_kind == "oberspartopf" {
+      let child =
+        crate::accounts::resolve_transfer_target_account(conn, &account_id, &match_text)?;
+      (other_id.clone(), child)
+    } else {
+      (other_id.clone(), account_id.clone())
+    };
+    let amount = amount_cents.abs();
+    let internal_source = format!(
+      "bank_import:internal:{date}:{amount}:{from_account_id}:{to_account_id}:{id}"
+    );
+    conn.execute(
+      "UPDATE ledger_transactions SET
+         kind = 'transfer',
+         internal_transfer = 1,
+         account_id = NULL,
+         from_account_id = ?2,
+         to_account_id = ?3,
+         amount_cents = ?4,
+         source_id = ?5,
+         icon = 'arrow-left-right',
+         color = '#64748b'
+       WHERE id = ?1",
+      rusqlite::params![id, from_account_id, to_account_id, amount, internal_source],
+    )?;
+  }
+
+  conn.execute(
+    "UPDATE ledger_transactions SET internal_transfer = 1 WHERE kind = 'transfer' AND internal_transfer = 0",
+    [],
+  )?;
+
+  conn.execute(
+    "INSERT INTO app_settings (key, value) VALUES ('ledger_internal_transfers_v2', '1')",
+    [],
+  )?;
+  let _ = crate::dashboard_cache::invalidate(conn);
   Ok(())
 }
 

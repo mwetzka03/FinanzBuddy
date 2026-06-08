@@ -11,6 +11,14 @@ export function formatEurFromCents(amountCents: number): string {
   return formatEurAbsFromCents(Math.abs(amountCents));
 }
 
+/** Signed balance (negative allowed, positive without leading +). */
+export function formatBalanceEurFromCents(amountCents: number): string {
+  if (amountCents < 0) {
+    return `−${formatEurAbsFromCents(Math.abs(amountCents))}`;
+  }
+  return formatEurAbsFromCents(amountCents);
+}
+
 /** Signed amount for account ledger (+ income, − expense). */
 export function formatSignedEurFromCents(amountCents: number): string {
   if (amountCents === 0) return formatEurAbsFromCents(0);

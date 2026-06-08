@@ -125,7 +125,7 @@ export function useUi() {
     columnGap: 16,
     minWidth: 0,
     alignItems: 'center',
-    textAlign: 'center',
+    textAlign: 'left',
   };
 
   const tableRow: CSSProperties = {
@@ -171,6 +171,8 @@ export function useUi() {
   };
 
   const thName: CSSProperties = { textAlign: 'left', textTransform: 'none', letterSpacing: 'normal', fontSize: 13 };
+  const thCenter: CSSProperties = { ...thName, textAlign: 'center' };
+  const thMono: CSSProperties = { ...thName, fontFamily: 'ui-monospace, monospace' };
   const tdName: CSSProperties = { textAlign: 'left', minWidth: 0 };
 
   const detailLink: CSSProperties = {
@@ -206,9 +208,23 @@ export function useUi() {
     fontWeight: 700,
     color: colors.text,
     position: 'relative',
+    paddingLeft: 14,
+    paddingRight: 14,
   };
 
-  function tdAmountText(amountCents?: number): CSSProperties {
+  function tdAmountText(amountCents?: number, neutral = false): CSSProperties {
+    if (neutral) {
+      return {
+        textAlign: 'center',
+        fontFamily: 'ui-monospace, monospace',
+        fontWeight: 700,
+        fontSize: 13,
+        color: colors.text,
+        position: 'relative',
+        paddingLeft: 14,
+        paddingRight: 14,
+      };
+    }
     const positive = amountCents == null ? true : amountCents > 0;
     const zero = amountCents === 0;
     return {
@@ -218,6 +234,8 @@ export function useUi() {
       fontSize: 13,
       color: zero ? colors.textMuted : positive ? colors.amountPositive : colors.amountNegative,
       position: 'relative',
+      paddingLeft: 14,
+      paddingRight: 14,
     };
   }
 
@@ -227,7 +245,7 @@ export function useUi() {
   }
 
   const tdCenter: CSSProperties = { textAlign: 'center' };
-  const tdMono: CSSProperties = { textAlign: 'center', fontFamily: 'ui-monospace, monospace', fontSize: 13 };
+  const tdMono: CSSProperties = { textAlign: 'left', fontFamily: 'ui-monospace, monospace', fontSize: 13 };
   const tdActions: CSSProperties = {
     display: 'flex',
     justifyContent: 'flex-end',
@@ -342,6 +360,8 @@ export function useUi() {
     sectionTitle,
     backLink,
     thName,
+    thCenter,
+    thMono,
     tdName,
     nameLink,
     detailLink,

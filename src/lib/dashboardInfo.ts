@@ -8,14 +8,17 @@ export const DASHBOARD_INFO = {
   startLiquid:
     'Liquide Mittel zu Monatsbeginn (Prognose). Erster Monat: Backend-Prognose (Korrekturen + Forecasts auf liquiden Konten), danach: Ende liquide Vormonat.',
   income:
-    'Einnahmen im gewählten Monat (gebucht + offene Prognosen). Einnahmen am letzten Bankarbeitstag — auch wenn bereits gebucht — zählen erst im Folgemonat.',
-  expenses: 'Ausgaben im gewählten Monat (gebucht + Prognosen) — ohne Transfers, Korrekturen und reine Depot-Käufe.',
+    'Einnahmen im gewählten Zeitraum (gebucht + offene Prognosen). Einnahmen am letzten Bankarbeitstag zählen erst im Folgemonat. Klick filtert die Ereignisliste.',
+  expenses:
+    'Ausgaben im gewählten Zeitraum (gebucht + Prognosen) — ohne Transfers, Korrekturen und reine Depot-Käufe. Klick filtert die Ereignisliste.',
   net: 'Einnahmen minus Ausgaben im gewählten Monat.',
   fixedCosts: 'Wiederkehrende Fixkosten im Monat. Klick filtert die Ereignisliste.',
   variableCosts: 'Variable Monatskosten (Prognose oder Ist). Klick filtert die Ereignisliste.',
   buys: 'Angewendete Kaufposten und geplante Käufe im Monat.',
-  debtOwed: 'Offene Forderungen — Beträge, die dir andere schulden.',
-  debtIOwe: 'Offene Verbindlichkeiten — Beträge, die du anderen schuldest.',
+  debtOwed:
+    'Offene Forderungen — Beträge, die dir andere schulden. Nur in der Gesamtübersicht (Alle Konten), fließen nicht in Kontosalden ein.',
+  debtIOwe:
+    'Offene Verbindlichkeiten — Beträge, die du anderen schuldest. Nur in der Gesamtübersicht (Alle Konten), fließen nicht in Kontosalden ein.',
   endBalance:
     'Prognostizierter Endsaldo = Startsaldo + Einnahmen − Ausgaben des Monats. Gleichzeitig Startsaldo des Folgemonats.',
   deltaBalance: 'Veränderung vom Startsaldo zum Endsaldo (= Einnahmen − Ausgaben).',

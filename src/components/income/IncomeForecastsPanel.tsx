@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { Cadence, IncomeForecast, IncomeForecastDueRule, IsoDate } from '../../lib/types';
+import { useEffect, useMemo, useState } from 'react';
+import type { Account, Cadence, IncomeForecast, IncomeForecastDueRule, IsoDate } from '../../lib/types';
 import { AddEntryButton } from '../common/AddEntryButton';
 import { Checkbox } from '../common/Checkbox';
 import { Modal } from '../common/Modal';
@@ -11,6 +11,7 @@ import { formatIncomeEurFromCents, parseEurToCents } from '../../lib/money';
 import {
   createIncomeForecast,
   deleteIncomeForecast,
+  listAccounts,
   listIncomeForecasts,
   previewIncomeForecast,
   updateIncomeForecast,
@@ -51,9 +52,10 @@ type ForecastFormState = {
   dayOfMonth: string;
   hasEndDate: boolean;
   endChargeDate: IsoDate | '';
+  accountId: string;
 };
 
-function emptyForm(): ForecastFormState {
+function emptyForm(mainAccountId: string): ForecastFormState {
   const today = isoToday();
   return {
     name: '',
@@ -64,6 +66,7 @@ function emptyForm(): ForecastFormState {
     dayOfMonth: dayFromIso(today),
     hasEndDate: false,
     endChargeDate: '',
+    accountId: mainAccountId,
   };
 }
 
@@ -77,6 +80,7 @@ function formFromRow(row: IncomeForecast): ForecastFormState {
     dayOfMonth: String(row.dayOfMonth ?? 1),
     hasEndDate: !!row.endChargeDate,
     endChargeDate: row.endChargeDate ?? '',
+    accountId: row.accountId,
   };
 }
 
@@ -88,13 +92,21 @@ export function IncomeForecastsPanel({ onError }: IncomeForecastsPanelProps) {
   const ui = useUi();
   const { t } = useLocale();
   const [rows, setRows] = useState<IncomeForecast[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Record<string, IsoDate[]>>({});
 
+  const ledgerAccounts = useMemo(() => accounts.filter((a) => a.balanceSource === 'ledger'), [accounts]);
+  const mainAccountId = useMemo(
+    () => ledgerAccounts.find((a) => a.isMain)?.id ?? ledgerAccounts[0]?.id ?? '',
+    [ledgerAccounts],
+  );
+
   async function refresh() {
-    const data = await listIncomeForecasts();
+    const [data, accountRows] = await Promise.all([listIncomeForecasts(), listAccounts()]);
     setRows(data);
+    setAccounts(accountRows);
     const entries = await Promise.all(
       data.map(async (row) => {
         try {
@@ -186,6 +198,8 @@ export function IncomeForecastsPanel({ onError }: IncomeForecastsPanelProps) {
         open={modalOpen}
         forecastId={editingId}
         rows={rows}
+        accounts={ledgerAccounts}
+        mainAccountId={mainAccountId}
         onClose={() => setModalOpen(false)}
         onSaved={async () => {
           setModalOpen(false);
@@ -201,6 +215,8 @@ function IncomeForecastModal({
   open,
   forecastId,
   rows,
+  accounts,
+  mainAccountId,
   onClose,
   onSaved,
   onError,
@@ -208,6 +224,8 @@ function IncomeForecastModal({
   open: boolean;
   forecastId: string | null;
   rows: IncomeForecast[];
+  accounts: Account[];
+  mainAccountId: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
   onError?: (msg: string | null) => void;
@@ -215,16 +233,16 @@ function IncomeForecastModal({
   const { t } = useLocale();
   const ui = useUi();
   const existing = forecastId ? rows.find((r) => r.id === forecastId) : undefined;
-  const [form, setForm] = useState<ForecastFormState>(() => emptyForm());
+  const [form, setForm] = useState<ForecastFormState>(() => emptyForm(mainAccountId));
 
   useEffect(() => {
     if (!open) return;
     if (existing) {
       setForm(formFromRow(existing));
     } else {
-      setForm(emptyForm());
+      setForm(emptyForm(mainAccountId));
     }
-  }, [open, existing]);
+  }, [open, existing, mainAccountId]);
 
   function patch(partial: Partial<ForecastFormState>) {
     setForm((prev) => ({ ...prev, ...partial }));
@@ -249,6 +267,7 @@ function IncomeForecastModal({
         dueRule: form.dueRule,
         dayOfMonth: form.dueRule === 'calendar_day' ? Number(form.dayOfMonth || '1') : null,
         endChargeDate: form.hasEndDate && form.endChargeDate ? form.endChargeDate : null,
+        accountId: form.accountId || mainAccountId,
       };
       if (forecastId && existing) {
         await updateIncomeForecast({
@@ -291,6 +310,16 @@ function IncomeForecastModal({
             <input value={form.amount} onChange={(e) => patch({ amount: e.target.value })} placeholder="2500,00" />
           </label>
         </div>
+        <label>
+          {t('transactions.accountLabel')}
+          <select value={form.accountId || mainAccountId} onChange={(e) => patch({ accountId: e.target.value })}>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="fh-form-row">
           <label>
             {t('common.rhythm')}

@@ -8,6 +8,8 @@ export const en: TranslationDict = {
     edit: 'Edit',
     add: 'Add',
     back: 'Back',
+    next: 'Next',
+    required: 'Required',
     name: 'Name',
     amount: 'Amount',
     date: 'Date',
@@ -95,6 +97,7 @@ export const en: TranslationDict = {
       navigation: 'Navigation',
       loading: 'Loading',
       backend: 'Backend',
+      calc: 'Calculation',
     },
   },
 
@@ -136,23 +139,104 @@ export const en: TranslationDict = {
     },
     about: {
       title: 'About FinanzBuddy',
-      desc: 'Personal finance planning with ledger, forecasts and portfolio — all stored locally.',
+      desc: 'Personal finance planning with ledger, forecasts, salary periods and portfolio — all stored locally. Dashboard period and primary income are set once during setup.',
+      credit: 'Built by Mario Wetzka with help from Claude AI.',
     },
     developerMode: {
       title: 'Developer mode',
-      desc: 'Shows a technical log while loading and in settings.',
+      desc: 'Shows a technical log while loading, in the bottom-right dock and in settings. Resize by dragging the window edge.',
+    },
+    dashboard: {
+      title: 'Dashboard period',
+      desc: 'Calendar month or period since last salary (primary income).',
+      lockedDesc: 'The period was set during setup and can no longer be changed.',
+      calendarMonth: 'Calendar month',
+      sinceLastSalary: 'Since last salary',
+    },
+    accounts: {
+      title: 'Account maintenance',
+      desc: 'Create accounts, set the main account and manage liquidity. Bank import is below.',
+    },
+    data: {
+      title: 'Manage data',
+      desc: 'Permanently deletes local data on this device. Export or back up first if needed.',
+      periodResetHint:
+        'The dashboard period (from when bookings are counted) can only be changed again via “Reset app” during setup.',
+      clearTransactions: 'Delete all transactions',
+      clearTransactionsConfirm:
+        'Permanently delete all ledger entries, forecasts, fixed/variable costs, buys, debts, portfolio positions and imported balances? Only accounts (names, IBAN, type) are kept.',
+      resetAll: 'Delete all user data',
+      resetApp: 'Reset app',
+      resetAppConfirm:
+        'The app will be fully reset. All accounts, bookings and settings are deleted and setup starts again. Continue?',
+      resetAllConfirm:
+        'Delete everything (accounts, forecasts, fixed costs, debts, portfolio, etc.)? Only an empty main account remains. This cannot be undone.',
+      exportData: 'Export data',
+      importData: 'Import data',
+      exportSuccess: '{{message}}',
+      importSuccess: '{{message}}',
+      importConfirm:
+        'All local data will be replaced by the backup. Export first if you need to keep anything. The app will reload afterwards. Continue?',
+    },
+    bankImport: {
+      title: 'Import bank export',
+      manualSetupBlocked:
+        'Bank import is disabled for manual setup. Use “Reset app” to run setup again with bank import.',
+      desc: 'Load a Sparkasse export file and import transactions plus opening balance into an account. Already imported entries are skipped by bank reference.',
+      verifyHint:
+        'Bank imports can cause discrepancies (e.g. missing or duplicate transactions). After importing, check Transactions to verify all bookings are correct.',
+      formatHint:
+        'Recommended: “Excel (CSV-CAMT V8)” — one file instead of many XMLs in a ZIP. ZIP archives, CAMT XML and MT940 also work.',
+      account: 'Target account',
+      noAccounts: 'No checking account available',
+      chooseFile: 'Choose file',
+      noFile: 'No file selected',
+      import: 'Import',
+      importing: 'Importing…',
+      fileFilter: 'Bank export',
+      balanceModalTitle: 'Current account balance',
+      balanceModalDesc:
+        'The export file does not include a balance. Enter your current account balance (as of today) — the opening balance is back-calculated from all transactions in the file up to today (including multi-month exports).',
+      balanceModalLabel: 'Balance (EUR)',
+      balanceModalConfirm: 'Confirm',
+      balanceInvalid: 'Please enter a valid amount (e.g. 1,234.56).',
+      balanceSet: 'Balance: {{amount}} €',
+      childBalanceModalTitle: 'Sub-pot balances',
+      childBalanceModalDesc:
+        'Enter the current balance of each sub-pot. Opening balances are back-calculated from assigned transactions per pot.',
+      childBalancesSet: '{{count}} sub-pot balances set',
+      primaryIncomeModalTitle: 'Choose primary income',
+      primaryIncomeModalDesc:
+        'Pick your salary from the import. This drives the forecast, due rule, and — in “Since last salary” mode — back-calculation.',
+      primaryIncomePick: 'Income from import',
+      primaryIncomeName: 'Forecast name',
+      primaryIncomeDefaultName: 'Salary',
+      primaryIncomeUseImportAmount: 'Forecast amount matches import booking',
+      primaryIncomeCustomAmount: 'Custom forecast amount (EUR)',
+      primaryIncomeRequired: 'Please select a primary income.',
+      primaryIncomeNameRequired: 'Please enter a forecast name.',
+      primaryIncomeSkip: 'Without primary income',
+      primaryIncomeSet: 'Primary income selected',
+      resultFormat: 'Format: {{format}}',
+      resultIban: 'IBAN in file: {{iban}}',
+      resultImported: '{{count}} transactions imported',
+      resultSkipped: '{{count}} already present',
+      resultTransfers: '{{count}} matched as transfers',
+      resultOpeningBalance: 'Opening balance set as adjustment',
+      resultClosingBalance: 'Closing balance in file on {{date}}: {{amount}} EUR',
     },
   },
 
   transactions: {
     title: 'Transactions',
     intro:
-      'Manual bookings on your accounts. Categorise expenses via variable costs. Adjustments set the balance.',
+      'Manual bookings on your accounts. Filter “Income” shows booked income only; forecasts under “Income (forecast)”.',
     forecastIntro:
       'Recurring income with cadence and due dates. Booked payments appear under Transactions.',
     stockDepotHint:
       'Stock portfolios cannot receive manual bookings — please choose another account.',
     accountLabel: 'Account',
+    bookingText: 'Booking text',
     adjustmentAmount: 'Balance (EUR)',
     amountLabel: 'Amount (EUR)',
     empty: 'No transactions.',
@@ -164,7 +248,17 @@ export const en: TranslationDict = {
     historyHint: 'Adjustments set the balance to the entered amount.',
     titleField: 'Title',
     titlePlaceholder: 'Groceries',
+    categoryPlaceholder: 'Variable or fixed cost…',
+    categoryVariable: 'Variable costs',
+    categoryFixed: 'Fixed costs',
     undoTransfer: 'Undo transfer',
+    filterType: 'Filter by type',
+    filterAll: 'All types',
+    filterCurrentMonth: 'Current month',
+    monthPick: 'Month',
+    linkIncomeForecast: 'Income forecast',
+    linkIncomeForecastHint: 'Links this entry to a forecast occurrence. The forecast disappears from open bookings based on its cadence.',
+    linkIncomeForecastNone: 'No link',
     kinds: {
       income: 'Income',
       expense: 'Expense',
@@ -173,6 +267,8 @@ export const en: TranslationDict = {
       buy_apply: 'Purchase booked',
       buy_planned: 'Planned purchase',
       adjustment: 'Adjustment',
+      income_forecast: 'Income (forecast)',
+      expense_forecast: 'Expense (forecast)',
       forecast: 'Forecast',
     },
   },
@@ -180,7 +276,7 @@ export const en: TranslationDict = {
   buyList: {
     title: 'Shopping list',
     intro:
-      'Planned purchases appear on the dashboard. Check Real to book the expense today (main account).',
+      'Planned purchases count toward dashboard expenses. Check Real to book the amount today on the main account.',
     newEntry: 'New entry',
     editEntry: 'Edit entry',
     namePlaceholder: 'New laptop',
@@ -195,7 +291,7 @@ export const en: TranslationDict = {
   variableCosts: {
     title: 'Variable costs',
     intro:
-      'Recurring monthly costs (from 06/2026). Budget = forecast; actual = categorised transactions.',
+      'Recurring monthly costs as budget (forecast). Actual values come from categorised transactions.',
     newEntry: 'New entry',
     editEntry: 'Edit entry',
     formHint:
@@ -209,11 +305,16 @@ export const en: TranslationDict = {
 
   fixedCosts: {
     title: 'Fixed costs',
-    intro: 'Recurring debits — from main account by default, account selectable.',
+    intro:
+      'Recurring debits with cadence and due date (fixed day, 1st or last business day) — from main account by default.',
     newEntry: 'New entry',
     editEntry: 'Edit entry',
     namePlaceholder: 'Rent',
-    listHint: 'Fixed costs are debited automatically on the due date from the selected account.',
+    listHint: 'Click the name for booking history. Fixed costs are debited automatically on the due date.',
+    historyIntro: 'All past actual bookings assigned to this fixed cost.',
+    historyEmpty: 'No assigned bookings yet.',
+    formHint:
+      'Recurring fixed costs with cadence and due dates — debits happen automatically on schedule.',
   },
 
   accounts: {
@@ -230,6 +331,10 @@ export const en: TranslationDict = {
     transferHistory: 'Transfer history',
     transferHint: 'Internal transfers between your accounts — no money leaves the system.',
     editName: 'Edit name',
+    editAccount: 'Edit account',
+    iban: 'IBAN',
+    ibanPlaceholder: 'DE89…',
+    ibanHint: 'Used to auto-detect transfers between your accounts during bank import.',
     balanceSource: 'Balance source',
     balanceSourceLedger: 'Manual (bookings)',
     balanceSourceStock: 'Stock portfolio (live)',
@@ -239,6 +344,21 @@ export const en: TranslationDict = {
     mainAccountSuffix: ' (main)',
     toggleLiquid: 'Toggle liquid',
     defaultTransferTitle: 'Transfer',
+    accountKind: 'Account type',
+    kindStandard: 'Standard (checking)',
+    kindSpartopf: 'Savings pot',
+    kindOberspartopf: 'Parent savings pot',
+    kindDepot: 'Stock portfolio',
+    parentOberspartopf: 'Parent savings pot',
+    parentOberspartopfNone: '— none —',
+    parentOberspartopfHint: 'Optional: several savings pots can share one parent pot.',
+    spartopfNameHint:
+      'The savings pot name must match the Sparkasse reference text (e.g. „Spartopf Notgroschen“ matches //Notgroschen).',
+    oberspartopfNameHint:
+      'Parent pot — balance is the sum of sub-pots. Add the shared IBAN for incoming transfers.',
+    oberspartopfIbanHint:
+      'Shared savings account IBAN. Transfers are routed to sub-pots using the payment reference text.',
+    oberspartopfAggregate: 'Parent pot (sum of all sub-pots)',
   },
 
   expenseGroups: {
@@ -262,7 +382,10 @@ export const en: TranslationDict = {
     events: 'Events',
     eventsOnDay: 'Events on {{date}}',
     noEvents: 'No events.',
+    runningSubtotal: 'Running total',
     resetFilter: 'Reset filter',
+    refreshCalculations: 'Refresh calculations',
+    refreshingCalculations: 'Refreshing…',
     cards: {
       kontostand: 'Balance',
       kontostandDeltaPrevMonth: 'Δ vs prev. month',
@@ -271,11 +394,15 @@ export const en: TranslationDict = {
       startLiquid: 'Opening liquid funds (forecast)',
       income: 'Income',
       incomeWithMonth: 'Income ({{month}})',
+      incomeWithPeriod: 'Income ({{period}})',
       expenses: 'Expenses',
       expensesWithMonth: 'Expenses ({{month}})',
+      expensesWithPeriod: 'Expenses ({{period}})',
       net: 'Difference (income − expenses)',
       fixedCosts: 'Fixed costs',
+      remainingFixedCosts: 'Remaining fixed costs',
       variableCosts: 'Variable costs',
+      remainingVariableCosts: 'Remaining variable costs',
       buys: 'Buys (applied/planned)',
       debtOwed: 'Debts owed to me',
       debtIOwe: 'My debts',
@@ -296,14 +423,21 @@ export const en: TranslationDict = {
       startLiquid:
         'Liquid funds at month start (forecast). First month: backend forecast (adjustments + forecasts on liquid accounts), then prior month closing liquid.',
       income:
-        'Income in the selected month (booked + open forecasts). Income on the last business day counts in the following month even if already booked.',
-      expenses: 'Expenses in the selected month (booked + forecasts) — excluding transfers, adjustments and pure portfolio purchases.',
+        'Income in the selected period (booked + open forecasts). Income on the last business day counts in the following month. Click to filter the event list.',
+      expenses:
+        'Expenses in the selected period (booked + forecasts) — excluding transfers, adjustments and pure portfolio purchases. Click to filter the event list.',
       net: 'Income minus expenses in the selected month.',
       fixedCosts: 'Recurring fixed costs in the month. Click to filter the event list.',
+      remainingFixedCosts:
+        'Open fixed costs in the month: scheduled charges minus expenses already linked (actual booking amount).',
       variableCosts: 'Variable monthly costs (forecast or actual). Click to filter the event list.',
+      remainingVariableCosts:
+        'Remaining budget in variable cost pots: forecast minus categorized expenses.',
       buys: 'Applied and planned purchases in the month.',
-      debtOwed: 'Open receivables — amounts others owe you.',
-      debtIOwe: 'Open payables — amounts you owe others.',
+      debtOwed:
+        'Open receivables — amounts others owe you. Only in the all-accounts overview; not included in account balances.',
+      debtIOwe:
+        'Open payables — amounts you owe others. Only in the all-accounts overview; not included in account balances.',
       endBalance:
         'Forecast closing balance = opening + income − expenses. Also the next month opening balance.',
       deltaBalance: 'Change from opening to closing balance (= income − expenses).',
@@ -372,7 +506,7 @@ export const en: TranslationDict = {
   debts: {
     title: 'Debts',
     intro:
-      'Receivables and payables per person — separate from accounts, for tracking only.',
+      'Receivables and payables per person — separate from account bookings, for tracking only. On the dashboard visible only with “All accounts”.',
     newPerson: 'New person',
     formHint: 'Create a person to track receivables and payables separately from account bookings.',
     namePlaceholder: 'John Doe',
@@ -394,5 +528,88 @@ export const en: TranslationDict = {
     },
     entryPlaceholder: 'Entry',
     kind: 'Type',
+  },
+  onboarding: {
+    title: 'Welcome to FinanzBuddy',
+    subtitle: 'Set up the app in a few steps. You can go back at any time.',
+    modeTitle: 'How do you want to start?',
+    modeHint: 'Manual: enter balances yourself. Bank import (beta): load a CSV export.',
+    manualTitle: 'Manual',
+    manualDesc: 'Enter balances and optionally add primary income as a forecast.',
+    bankTitle: 'Bank import (beta)',
+    bankDesc: 'Accounts with IBAN, CSV import and automatic primary income.',
+    bankVerifyHint:
+      'Bank imports can cause discrepancies. After importing, check Transactions to verify all bookings are correct.',
+    accountsTitle: 'Create accounts',
+    accountsHint:
+      'A liquid main checking account is required. Optionally add a parent savings pot with IBAN and assign sub-pots — enter balances for sub-pots later, not for the parent pot.',
+    mainAccountTitle: 'Main account',
+    mainAccountHint: 'Name and IBAN of your checking account. IBAN is required for bank import.',
+    otherAccounts: 'Other accounts',
+    editAccount: 'Edit',
+    addAccount: 'Add account',
+    periodTitle: 'Dashboard period',
+    periodHint: 'This choice is permanent. Calendar month or salary periods from primary income.',
+    bankFilesTitle: 'Load bank exports',
+    bankFilesHint: 'One CSV file is required for the main account. Optional one file per other account.',
+    pickFile: 'Choose file',
+    noFile: 'No file',
+    bankIncomeTitle: 'Primary income',
+    bankIncomeHint:
+      'Pick your salary employer IBAN. Import bookings are shown for info only — enter the forecast amount manually.',
+    bankIncomePickIban: 'Employer IBAN',
+    bankIncomeSelectIban: 'Select IBAN…',
+    bankIncomePreview: 'Income from this IBAN in the import',
+    bankIncomePreviewEmpty: 'No income with counterparty IBAN found in the import.',
+    bankIncomeForecastAmount: 'Forecast amount (EUR)',
+    bankIncomeForecastAmountHint: 'Applies to future forecast dates. Import bookings stay unchanged.',
+    bankIncomeFirstSalary: 'First salary booking: {{date}} — opening balance on {{balanceDate}}',
+    bankIncomeDueRule: 'Due date (monthly)',
+    bankIncomeDayOfMonth: 'Calendar day',
+    bankIncomeOptional:
+      'Select the employer IBAN so the first primary income and dashboard period can be detected.',
+    bankBalanceTitle: 'Opening balance',
+    bankBalanceHint:
+      'Enter the balance per account on {{date}} — one day before the first salary booking for the selected IBAN. Earlier transactions are ignored.',
+    bankBalanceHintImport:
+      'For bank import: balance on {{date}} (day before first salary). This date is only the import anchor.',
+    bankCalendarBalanceTitle: 'Dashboard opening balance (calendar month)',
+    bankCalendarBalanceHint:
+      'For calendar month dashboard mode: balances on {{date}} — the 1st of the month after the first primary income.',
+    bankCalendarBalanceLabel: 'Balance on {{date}} (EUR)',
+    bankBalanceOberspartopfHint:
+      'Parent savings pots have no own balance — only their assigned sub-pots (and all other accounts).',
+    bankBalanceLabel: 'Balance on {{date}} (EUR)',
+    bankIncomeUseImportAmount: 'Forecast amount same as import booking',
+    bankIncomeCustomAmount: 'Custom forecast amount (EUR)',
+    bankIncomeCustomAmountHint: 'Applies only to future forecast dates; the import booking stays unchanged.',
+    manualBalancesTitle: 'Opening balance per account',
+    manualBalancesHint: 'Current balance per account. The first period starts today.',
+    manualIncomeTitle: 'Primary income (forecast)',
+    manualIncomeHint: 'Add your salary as a monthly forecast. You can edit it later.',
+    manualIncomeSkip: 'You can skip this step in calendar month mode.',
+    costsTitle: 'Fixed & variable costs (optional)',
+    costsHint: 'Add fixed and variable costs now, or skip this step.',
+    costsFixedTitle: 'Fixed costs',
+    costsVariableTitle: 'Variable costs',
+    costsAddFixed: 'Add fixed cost',
+    costsAddVariable: 'Add variable cost',
+    costsRemove: 'Remove',
+    reviewTitle: 'Summary',
+    reviewMode: 'Mode',
+    reviewPeriod: 'Period',
+    reviewAccounts: 'Accounts',
+    finish: 'Finish setup',
+    errorMode: 'Please choose manual or bank import.',
+    errorMainAccount: 'Please create a main account (standard/checking).',
+    errorMainLiquid: 'The main account must be marked as liquid.',
+    errorMainIban: 'IBAN is required on the main account for bank import.',
+    errorEmployerIban: 'Please select an employer IBAN with income in the import.',
+    errorForecastAmount: 'Please enter a forecast amount.',
+    errorMainImport: 'Please load the bank export for the main account.',
+    errorMainBalance: 'Please enter the opening balance for the main account.',
+    errorAccountBalance: 'Please enter the balance for “{{name}}”.',
+    errorManualIncome: 'Please enter name and amount for primary income.',
+    errorIncompleteBank: 'Bank import incomplete — check file, salary and balance.',
   },
 };

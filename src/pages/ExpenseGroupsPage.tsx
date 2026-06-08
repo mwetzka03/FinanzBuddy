@@ -57,8 +57,8 @@ export function ExpenseGroupsPage() {
           <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
             <div style={ui.thName}>{t('common.name')}</div>
             <ThAmount col="total">{t('common.total')}</ThAmount>
-            <div>{t('common.lines')}</div>
-            <div />
+            <div style={ui.thCenter}>{t('common.lines')}</div>
+            <div style={ui.tdActions} />
           </div>
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.noGroups')}</div>

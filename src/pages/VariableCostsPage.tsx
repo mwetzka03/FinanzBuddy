@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
-import type { VariableCost } from '../lib/types';
+import type { Account, VariableCost } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { ColorPicker, EntityIconBadge, IconPicker } from '../components/common/AppIcon';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
-import { DetailLink } from '../components/DetailLink';
+import { VariableCostDetailModal } from '../components/variableCosts/VariableCostDetailModal';
 import { useLocale } from '../i18n/LocaleProvider';
 import { formatExpenseEurFromCents, parseEurToCents } from '../lib/money';
-import { createVariableCost, deleteVariableCost, listVariableCosts, updateVariableCost } from '../tauri/api';
+import { createVariableCost, deleteVariableCost, listAccounts, listVariableCosts, updateVariableCost } from '../tauri/api';
 import { useUi } from '../lib/ui';
 import { ListPanel } from '../components/layout/ListPanel';
 import { PageShell } from '../components/layout/PageShell';
@@ -22,12 +22,15 @@ export function VariableCostsPage() {
   const ui = useUi();
   const { t } = useLocale();
   const [rows, setRows] = useState<VariableCost[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   async function refresh() {
     setRows(await listVariableCosts());
+    listAccounts().then(setAccounts).catch(() => undefined);
   }
 
   useEffect(() => {
@@ -74,7 +77,9 @@ export function VariableCostsPage() {
                 <EntityIconBadge icon={r.icon} color={r.color} size={20} />
                 <div style={ui.cellStack}>
                   <div style={ui.tdName}>
-                    <DetailLink to={`/variable-kosten/${r.id}`}>{r.name}</DetailLink>
+                    <button type="button" className="fh-link-button" style={ui.nameLink} onClick={() => setDetailId(r.id)}>
+                      {r.name}
+                    </button>
                   </div>
                   {r.notes ? <div style={ui.cellSub}>{r.notes}</div> : null}
                 </div>
@@ -99,10 +104,13 @@ export function VariableCostsPage() {
         </AmountTable>
       </ListPanel>
 
+      <VariableCostDetailModal open={detailId !== null} costId={detailId} onClose={() => setDetailId(null)} />
+
       <VariableCostModal
         open={modalOpen}
         costId={editingId}
         rows={rows}
+        accounts={accounts}
         onClose={() => setModalOpen(false)}
         onSaved={async () => {
           setModalOpen(false);
@@ -118,6 +126,7 @@ function VariableCostModal({
   open,
   costId,
   rows,
+  accounts,
   onClose,
   onSaved,
   onError,
@@ -125,18 +134,21 @@ function VariableCostModal({
   open: boolean;
   costId: string | null;
   rows: VariableCost[];
+  accounts: Account[];
   onClose: () => void;
   onSaved: () => Promise<void>;
   onError: (msg: string | null) => void;
 }) {
   const { t } = useLocale();
   const existing = costId ? rows.find((r) => r.id === costId) : undefined;
+  const mainAccountId = accounts.find((a) => a.isMain)?.id ?? accounts[0]?.id ?? '';
 
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [icon, setIcon] = useState('shop');
   const [color, setColor] = useState('#6366f1');
+  const [accountId, setAccountId] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -145,29 +157,25 @@ function VariableCostModal({
     setNotes(existing?.notes ?? '');
     setIcon(existing?.icon ?? 'shop');
     setColor(existing?.color ?? '#6366f1');
-  }, [open, existing]);
+    setAccountId(existing?.accountId ?? mainAccountId);
+  }, [open, existing, mainAccountId]);
 
   async function save() {
     if (!name.trim() || !amount.trim()) return;
     onError(null);
     try {
+      const payload = {
+        name,
+        amountCents: parseEurToCents(amount),
+        notes: notes.trim() ? notes : null,
+        icon,
+        color,
+        accountId: accountId || mainAccountId,
+      };
       if (costId) {
-        await updateVariableCost({
-          id: costId,
-          name,
-          amountCents: parseEurToCents(amount),
-          notes: notes.trim() ? notes : null,
-          icon,
-          color,
-        });
+        await updateVariableCost({ id: costId, ...payload });
       } else {
-        await createVariableCost({
-          name,
-          amountCents: parseEurToCents(amount),
-          notes: notes.trim() ? notes : null,
-          icon,
-          color,
-        });
+        await createVariableCost(payload);
       }
       await onSaved();
     } catch (e) {
@@ -191,6 +199,16 @@ function VariableCostModal({
         <label>
           {t('variableCosts.forecast')} (EUR/{t('common.month')})
           <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="45,00" />
+        </label>
+        <label>
+          {t('transactions.accountLabel')}
+          <select value={accountId || mainAccountId} onChange={(e) => setAccountId(e.target.value)}>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           {t('common.icon')}

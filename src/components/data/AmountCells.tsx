@@ -11,7 +11,7 @@ type AmountColProps = {
 export function ThAmount({ col, children }: AmountColProps) {
   const ui = useUi();
   return (
-    <div style={ui.thAmount} data-amount-col={String(col)}>
+    <div style={ui.thAmount} data-amount-col={String(col)} data-amount-header="">
       {children}
     </div>
   );
@@ -25,7 +25,7 @@ export function TdAmount({
 }: AmountColProps & { amountCents?: number }) {
   const ui = useUi();
   return (
-    <div style={ui.tdAmountText(neutral ? undefined : amountCents)} data-amount-col={String(col)}>
+    <div style={ui.tdAmountText(amountCents, neutral)} data-amount-col={String(col)}>
       {children}
     </div>
   );

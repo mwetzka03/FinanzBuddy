@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Account, AccountBalanceSource, LedgerTransaction } from '../lib/types';
+import type { Account, LedgerTransaction } from '../lib/types';
+import { accountKindLabel, buildAccountTreeRows, isMainAccountCandidate, isOberspartopf } from '../lib/accounts';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Checkbox } from '../components/common/Checkbox';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
+import { AccountFormModal } from '../components/settings/AccountFormModal';
 import {
-  createAccount,
   createTransfer,
   deleteTransfer,
   listAccounts,
   listLedgerTransactions,
-  setAccountLiquid,
   setMainAccount,
-  updateAccount,
 } from '../tauri/api';
 import { formatDisplayDate, isoToday } from '../lib/date';
 import { formatSignedEurFromCents, parseEurToCents } from '../lib/money';
@@ -23,10 +22,8 @@ import { ListPanel } from '../components/layout/ListPanel';
 import { PageShell } from '../components/layout/PageShell';
 import { DateInput } from '../components/DateInput';
 import { EditIconButton } from '../components/EditIconButton';
-import { SaveIconButton } from '../components/SaveIconButton';
-import { CancelIconButton } from '../components/CancelIconButton';
 
-const ACCOUNT_COLS = '1fr 120px 140px 140px';
+const ACCOUNT_COLS = '1fr 160px 48px';
 const TRANSFER_COLS = '120px 1fr 1fr 120px 120px';
 
 export function AccountsPage() {
@@ -36,14 +33,13 @@ export function AccountsPage() {
   const [transfers, setTransfers] = useState<LedgerTransaction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [editAccount, setEditAccount] = useState<Account | null>(null);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-
   const accountMap = useMemo(() => new Map(rows.map((a) => [a.id, a.name])), [rows]);
+  const treeRows = useMemo(() => buildAccountTreeRows(rows), [rows]);
   const mainAccountId = useMemo(() => rows.find((a) => a.isMain)?.id ?? '', [rows]);
-  const ledgerAccounts = useMemo(() => rows.filter((a) => a.balanceSource === 'ledger'), [rows]);
+  const mainAccountCandidates = useMemo(() => rows.filter(isMainAccountCandidate), [rows]);
 
   async function refresh() {
     const [accounts, ledger] = await Promise.all([listAccounts(), listLedgerTransactions({})]);
@@ -55,32 +51,10 @@ export function AccountsPage() {
     refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  async function onToggleLiquid(a: Account) {
-    setError(null);
-    await setAccountLiquid({ id: a.id, isLiquid: !a.isLiquid });
-    await refresh();
-  }
-
   async function onSetMain(id: string) {
     setError(null);
     await setMainAccount(id);
     await refresh();
-  }
-
-  function startEditName(a: Account) {
-    setEditingId(a.id);
-    setEditName(a.name);
-  }
-
-  async function saveEditName(id: string) {
-    setError(null);
-    await updateAccount({ id, name: editName.trim() });
-    setEditingId(null);
-    await refresh();
-  }
-
-  function balanceSourceLabel(source: AccountBalanceSource): string {
-    return source === 'stock_portfolio' ? t('accounts.balanceSourceStock') : t('accounts.balanceSourceLedger');
   }
 
   async function onUndoTransfer(id: string) {
@@ -107,8 +81,8 @@ export function AccountsPage() {
         <label style={{ ...ui.field, maxWidth: 360, marginBottom: 16 }}>
           <span style={ui.label}>{t('accounts.mainAccount')}</span>
           <select value={mainAccountId} onChange={(e) => onSetMain(e.target.value)} style={ui.input}>
-            {ledgerAccounts.length === 0 ? <option value="">{t('common.noManualAccount')}</option> : null}
-            {ledgerAccounts.map((a) => (
+            {mainAccountCandidates.length === 0 ? <option value="">{t('common.noManualAccount')}</option> : null}
+            {mainAccountCandidates.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
               </option>
@@ -119,44 +93,27 @@ export function AccountsPage() {
           <div style={ui.table}>
             <div style={{ ...ui.tableHead, gridTemplateColumns: ACCOUNT_COLS }}>
               <div style={ui.thName}>{t('common.name')}</div>
-              <div>{t('accounts.liquid')}</div>
-              <div>{t('accounts.balanceSource')}</div>
+              <div>{t('accounts.accountKind')}</div>
               <div />
             </div>
             {rows.length === 0 ? (
               <div style={ui.emptyRow}>{t('common.noAccountsYet')}</div>
             ) : (
-              rows.map((a) => (
-                <div key={a.id} style={{ ...ui.tableRow, gridTemplateColumns: ACCOUNT_COLS }}>
-                  {editingId === a.id ? (
-                    <>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input value={editName} onChange={(e) => setEditName(e.target.value)} style={ui.input} />
-                        <SaveIconButton label={t('common.save')} onClick={() => saveEditName(a.id)} />
-                        <CancelIconButton label={t('common.cancel')} onClick={() => setEditingId(null)} />
-                      </div>
-                      <div />
-                      <div />
-                      <div />
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ ...ui.tdName, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span>
-                          {a.name}
-                          {a.isMain ? t('accounts.mainAccountSuffix') : ''}
-                        </span>
-                        <EditIconButton label={t('accounts.editName')} onClick={() => startEditName(a)} />
-                      </div>
-                      <div style={ui.tdCenter}>{a.isLiquid ? t('common.yes') : t('common.no')}</div>
-                      <div style={{ ...ui.tdCenter, fontSize: 13 }}>{balanceSourceLabel(a.balanceSource)}</div>
-                      <div style={ui.tdActions}>
-                        <button style={ui.btn} onClick={() => onToggleLiquid(a)}>
-                          {a.isLiquid ? t('accounts.notLiquid') : t('accounts.liquid')}
-                        </button>
-                      </div>
-                    </>
-                  )}
+            treeRows.map(({ account: a, depth }) => (
+              <div key={a.id} style={{ ...ui.tableRow, gridTemplateColumns: ACCOUNT_COLS }}>
+                <div style={{ ...ui.cellStack, paddingLeft: depth * 18 }}>
+                  <span>
+                    {a.name}
+                    {a.isMain ? t('accounts.mainAccountSuffix') : ''}
+                  </span>
+                  {a.iban ? <span style={{ ...ui.cellSub, fontSize: '0.85em' }}>{a.iban}</span> : null}
+                </div>
+                  <div>{accountKindLabel(a, t)}</div>
+                  <div style={{ ...ui.tdActions, justifyContent: 'flex-end' }}>
+                    {!isOberspartopf(a) ? (
+                      <EditIconButton label={t('accounts.editAccount')} onClick={() => setEditAccount(a)} />
+                    ) : null}
+                  </div>
                 </div>
               ))
             )}
@@ -195,11 +152,26 @@ export function AccountsPage() {
         </AmountTable>
       </ListPanel>
 
-      <AccountModal
+      <AccountFormModal
+        mode="create"
         open={accountModalOpen}
+        allAccounts={rows}
         onClose={() => setAccountModalOpen(false)}
         onSaved={async () => {
           setAccountModalOpen(false);
+          await refresh();
+        }}
+        onError={setError}
+      />
+
+      <AccountFormModal
+        mode="edit"
+        open={editAccount != null}
+        account={editAccount}
+        allAccounts={rows}
+        onClose={() => setEditAccount(null)}
+        onSaved={async () => {
+          setEditAccount(null);
           await refresh();
         }}
         onError={setError}
@@ -216,79 +188,6 @@ export function AccountsPage() {
         onError={setError}
       />
     </PageShell>
-  );
-}
-
-function AccountModal({
-  open,
-  onClose,
-  onSaved,
-  onError,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSaved: () => Promise<void>;
-  onError: (msg: string | null) => void;
-}) {
-  const { t } = useLocale();
-  const [name, setName] = useState('');
-  const [isLiquid, setIsLiquid] = useState(true);
-  const [balanceSource, setBalanceSource] = useState<AccountBalanceSource>('ledger');
-
-  useEffect(() => {
-    if (!open) return;
-    setName('');
-    setIsLiquid(true);
-    setBalanceSource('ledger');
-  }, [open]);
-
-  async function save() {
-    if (!name.trim()) return;
-    onError(null);
-    try {
-      await createAccount({ name, isLiquid, balanceSource });
-      await onSaved();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  return (
-    <Modal open={open} title={t('accounts.newAccount')} onClose={onClose}>
-      <div className="fh-form">
-        <label>
-          {t('common.name')}
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('accounts.namePlaceholder')}
-          />
-        </label>
-        <label>
-          {t('accounts.balanceSource')}
-          <select
-            value={balanceSource}
-            onChange={(e) => setBalanceSource(e.target.value as AccountBalanceSource)}
-          >
-            <option value="ledger">{t('accounts.balanceSourceLedger')}</option>
-            <option value="stock_portfolio">{t('accounts.balanceSourceStock')}</option>
-          </select>
-        </label>
-        <Checkbox checked={isLiquid} onChange={setIsLiquid}>
-          {t('accounts.liquid')}
-        </Checkbox>
-        <div className="fh-form-actions">
-          <button type="button" className="fh-btn ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </button>
-          <div className="fh-form-actions-right">
-            <button type="button" className="fh-btn primary" onClick={save} disabled={!name.trim()}>
-              {t('common.create')}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Modal>
   );
 }
 

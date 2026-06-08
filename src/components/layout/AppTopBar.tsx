@@ -3,7 +3,6 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { Settings } from 'lucide-react';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { findActiveNavParent, isNavSectionActive, NAV_SECTIONS } from '../../lib/nav';
-import { BRAND_NAME, BRAND_TAGLINE } from '../../lib/brand';
 
 export function AppTopBar() {
   const { t } = useLocale();
@@ -35,8 +34,8 @@ export function AppTopBar() {
             </div>
           )}
           <div className="fh-topbar__brand-text">
-            <strong className="fh-topbar__brand-title">{BRAND_NAME}</strong>
-            <span className="fh-topbar__brand-tagline">{BRAND_TAGLINE}</span>
+            <strong className="fh-topbar__brand-title">{t('brand.name')}</strong>
+            <span className="fh-topbar__brand-tagline">{t('brand.tagline')}</span>
           </div>
         </NavLink>
 

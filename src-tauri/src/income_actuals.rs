@@ -85,7 +85,7 @@ pub fn sync_income_actual_ledger(
   occurrence_date: &str,
   name: &str,
   amount_cents: i64,
-  main_id: &str,
+  account_id: &str,
 ) -> AppResult<()> {
   let source_id = income_forecast_source_id(forecast_id, occurrence_date);
   let title = if name.trim().is_empty() {
@@ -110,7 +110,7 @@ pub fn sync_income_actual_ledger(
   let now = Utc::now().to_rfc3339();
   conn.execute(
     "INSERT INTO ledger_transactions (id, date, amount_cents, account_id, from_account_id, to_account_id, kind, title, notes, source_id, created_at) VALUES (?1, ?2, ?3, ?4, NULL, NULL, 'income', ?5, NULL, ?6, ?7)",
-    params![tx_id, occurrence_date, amount_cents.abs(), main_id, title, source_id, now],
+    params![tx_id, occurrence_date, amount_cents.abs(), account_id, title, source_id, now],
   )?;
   conn.execute(
     "UPDATE income_forecast_actuals SET ledger_transaction_id = ?3 WHERE income_forecast_id = ?1 AND occurrence_date = ?2",
@@ -204,6 +204,13 @@ fn get_income_forecast_detail_inner(state: State<'_, AppState>, id: String) -> A
       day_of_month: row.5,
       end_charge_date: row.6,
       active: row.7 != 0,
+      account_id: conn
+        .query_row(
+          "SELECT COALESCE(account_id, ?1) FROM income_forecasts WHERE id = ?2",
+          params![get_main_account_id(&conn)?, id],
+          |r| r.get(0),
+        )
+        .unwrap_or_else(|_| get_main_account_id(&conn).unwrap_or_default()),
     },
     actuals,
   })
@@ -227,18 +234,17 @@ fn set_income_forecast_actual_inner(state: State<'_, AppState>, input: SetIncome
     return Err(AppError::Invalid("occurrenceDate must be YYYY-MM-DD".into()));
   }
   let conn = state.conn.lock().unwrap();
-  let main_id = get_main_account_id(&conn)?;
-  let (name, forecast_amount): (String, i64) = conn.query_row(
-    "SELECT name, amount_cents FROM income_forecasts WHERE id = ?1",
-    params![input.id],
-    |r| Ok((r.get(0)?, r.get(1)?)),
+  let (name, forecast_amount, account_id): (String, i64, String) = conn.query_row(
+    "SELECT name, amount_cents, COALESCE(account_id, ?1) FROM income_forecasts WHERE id = ?2",
+    params![get_main_account_id(&conn)?, input.id],
+    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
   )?;
 
   let today = Utc::now().date_naive().format("%Y-%m-%d").to_string();
 
   match input.amount_cents {
     None | Some(0) => {
-      clear_income_actual_ledger(&conn, &input.id, &input.occurrence_date, forecast_amount, &name, &main_id)?;
+      clear_income_actual_ledger(&conn, &input.id, &input.occurrence_date, forecast_amount, &name, &account_id)?;
       conn.execute(
         "DELETE FROM income_forecast_actuals WHERE income_forecast_id = ?1 AND occurrence_date = ?2",
         params![input.id, input.occurrence_date],
@@ -251,7 +257,7 @@ fn set_income_forecast_actual_inner(state: State<'_, AppState>, input: SetIncome
         params![input.id, input.occurrence_date, amount],
       )?;
       if input.occurrence_date.as_str() <= today.as_str() {
-        sync_income_actual_ledger(&conn, &input.id, &input.occurrence_date, &name, amount, &main_id)?;
+        sync_income_actual_ledger(&conn, &input.id, &input.occurrence_date, &name, amount, &account_id)?;
       }
     }
     _ => return Err(AppError::Invalid("amount must be positive".into())),
@@ -290,4 +296,77 @@ fn list_income_forecast_occurrences_inner(state: State<'_, AppState>, id: String
     500,
     end_charge_date.as_deref().filter(|s| !s.is_empty()),
   ))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkIncomeForecastInput {
+  pub ledger_transaction_id: String,
+  pub forecast_id: String,
+  pub occurrence_date: String,
+}
+
+#[tauri::command]
+pub fn link_ledger_to_income_forecast(
+  state: State<'_, AppState>,
+  input: LinkIncomeForecastInput,
+) -> CmdResult<()> {
+  to_cmd_result(link_ledger_to_income_forecast_inner(state, input))
+}
+
+fn link_ledger_to_income_forecast_inner(
+  state: State<'_, AppState>,
+  input: LinkIncomeForecastInput,
+) -> AppResult<()> {
+  if input.occurrence_date.len() != 10 {
+    return Err(AppError::Invalid("occurrenceDate must be YYYY-MM-DD".into()));
+  }
+  let conn = state.conn.lock().unwrap();
+  let (kind, amount_cents, account_id): (String, i64, Option<String>) = conn.query_row(
+    "SELECT kind, amount_cents, account_id FROM ledger_transactions WHERE id = ?1",
+    params![input.ledger_transaction_id],
+    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+  )?;
+  if kind != "income" || amount_cents <= 0 {
+    return Err(AppError::Invalid("Nur Einnahmen können zugeordnet werden".into()));
+  }
+  let (name, forecast_amount, forecast_account): (String, i64, String) = conn.query_row(
+    "SELECT name, amount_cents, COALESCE(account_id, ?1) FROM income_forecasts WHERE id = ?2",
+    params![get_main_account_id(&conn)?, input.forecast_id],
+    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+  )?;
+  let ledger_account = account_id.as_deref().unwrap_or("");
+  if !ledger_account.is_empty() && ledger_account != forecast_account.as_str() {
+    return Err(AppError::Invalid("Konto der Buchung passt nicht zur Prognose".into()));
+  }
+
+  let source_id = income_forecast_source_id(&input.forecast_id, &input.occurrence_date);
+  if let Some(old_id) = ledger_id_for_occurrence(&conn, &input.forecast_id, &input.occurrence_date)? {
+    if old_id != input.ledger_transaction_id {
+      conn.execute("DELETE FROM ledger_transactions WHERE id = ?1", params![old_id])?;
+    }
+  }
+
+  let title = if name.trim().is_empty() {
+    "Einnahme (Ist)".into()
+  } else {
+    name.clone()
+  };
+  conn.execute(
+    "UPDATE ledger_transactions SET source_id = ?2, title = ?3 WHERE id = ?1",
+    params![input.ledger_transaction_id, source_id, title],
+  )?;
+  conn.execute(
+    "INSERT INTO income_forecast_actuals (income_forecast_id, occurrence_date, amount_cents, ledger_transaction_id)
+     VALUES (?1, ?2, ?3, ?4)
+     ON CONFLICT(income_forecast_id, occurrence_date) DO UPDATE SET amount_cents = excluded.amount_cents, ledger_transaction_id = excluded.ledger_transaction_id",
+    params![
+      input.forecast_id,
+      input.occurrence_date,
+      amount_cents,
+      input.ledger_transaction_id,
+    ],
+  )?;
+  let _ = forecast_amount;
+  Ok(())
 }

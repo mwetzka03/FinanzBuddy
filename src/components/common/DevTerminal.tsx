@@ -58,6 +58,7 @@ export function DevTerminal({ defaultOpen = false, alwaysExpanded = false }: Dev
               navigation: t('devLog.contexts.navigation'),
               loading: t('devLog.contexts.loading'),
               backend: t('devLog.contexts.backend'),
+              calc: t('devLog.contexts.calc'),
             };
             const ctxLabel = entry.context ? contextLabels[entry.context] ?? entry.context : null;
             return (

@@ -85,13 +85,54 @@ export function lastBusinessDayOfMonthRp(month: IsoMonth): IsoDate {
   return toIsoFromDate(d);
 }
 
-/** Buchungsmonat für Einnahmen: am letzten Bankarbeitstag → Folgemonat. */
-export function incomeAccountingMonth(iso: IsoDate): IsoMonth {
-  const d = parseIsoDate(iso);
-  const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` as IsoMonth;
-  const lastBd = lastBusinessDayOfMonthRp(month);
-  if (iso === lastBd) {
-    return monthAdd(month, 1);
+export function firstBusinessDayOfMonthRp(month: IsoMonth): IsoDate {
+  const [y, m] = month.split('-').map(Number);
+  let d = new Date(y, m - 1, 1);
+  while (!isBusinessDayRp(toIsoFromDate(d))) {
+    d.setDate(d.getDate() + 1);
   }
-  return month;
+  return toIsoFromDate(d);
+}
+
+function sameIsoDay(a: IsoDate, b: IsoDate): boolean {
+  return a === b;
+}
+
+export function inferIncomeDueRule(date: IsoDate): {
+  dueRule: 'calendar_day' | 'first_business_day' | 'last_business_day';
+  dayOfMonth: number | null;
+} {
+  const month = date.slice(0, 7) as IsoMonth;
+  const [year, monthNum, day] = date.split('-').map(Number);
+  const firstBd = firstBusinessDayOfMonthRp(month);
+  const lastBd = lastBusinessDayOfMonthRp(month);
+  if (sameIsoDay(date, firstBd)) {
+    return { dueRule: 'first_business_day', dayOfMonth: null };
+  }
+  if (sameIsoDay(date, lastBd)) {
+    return { dueRule: 'last_business_day', dayOfMonth: null };
+  }
+  const monthEnd = new Date(year, monthNum, 0);
+  const monthEndIso = toIsoFromDate(monthEnd);
+  if (day === 1 || sameIsoDay(date, monthEndIso)) {
+    return { dueRule: 'calendar_day', dayOfMonth: day };
+  }
+  return { dueRule: 'calendar_day', dayOfMonth: day };
+}
+
+/** income_date für Backend: 0 = 1. Bankarbeitstag, 99 = letzter, 1–31 = Kalendertag. */
+export function deriveIncomeDate(
+  periodMode: 'calendar_month' | 'since_last_salary',
+  dueRule: 'calendar_day' | 'first_business_day' | 'last_business_day',
+  dayOfMonth?: number | null,
+): number {
+  if (periodMode === 'calendar_month') return 0;
+  if (dueRule === 'first_business_day') return 0;
+  if (dueRule === 'last_business_day') return 99;
+  return dayOfMonth ?? 1;
+}
+
+/** Kalender-Monat der Einnahme (YYYY-MM). */
+export function incomeAccountingMonth(iso: IsoDate): IsoMonth {
+  return iso.slice(0, 7) as IsoMonth;
 }

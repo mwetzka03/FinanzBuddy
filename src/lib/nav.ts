@@ -1,7 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   ArrowLeftRight,
-  Landmark,
   LayoutDashboard,
   LineChart,
   ListChecks,
@@ -53,7 +52,6 @@ export const NAV_SECTIONS: NavSection[] = [
     labelKey: 'nav.more',
     icon: MoreHorizontal,
     items: [
-      { to: '/accounts', labelKey: 'nav.accounts', icon: Landmark },
       { to: '/schulden', labelKey: 'nav.debts', icon: PiggyBank },
       { to: '/ausgabengruppen', labelKey: 'nav.expenseGroups', icon: Tags },
     ],

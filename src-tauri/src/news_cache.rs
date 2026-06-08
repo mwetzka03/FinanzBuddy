@@ -155,14 +155,6 @@ pub fn refresh_now(state: &AppState, depot_account_id: Option<String>) -> AppRes
   Ok(entry)
 }
 
-pub fn spawn_refresh_async(app: AppHandle, depot_account_id: Option<String>) {
-  std::thread::spawn(move || {
-    if let Err(e) = refresh_once(&app, depot_account_id) {
-      eprintln!("News: Hintergrund-Aktualisierung fehlgeschlagen: {e}");
-    }
-  });
-}
-
 pub fn spawn_refresh_loop(app: AppHandle) {
   std::thread::spawn(move || {
     loop {
