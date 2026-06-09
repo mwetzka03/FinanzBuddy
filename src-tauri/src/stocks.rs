@@ -311,7 +311,7 @@ fn build_lot_view(lot: StockLot, price_eur: Option<f64>) -> StockLotView {
 
 fn chart_range_params(range: &str) -> (&'static str, &'static str) {
   match range {
-    "1d" => ("1d", "5m"),
+    "1d" => ("1d", "2m"),
     "5d" => ("5d", "15m"),
     "1mo" => ("1mo", "1d"),
     "1y" => ("1y", "1d"),
@@ -325,7 +325,7 @@ fn fetch_stock_chart(symbol_or_isin: &str, range: &str, fx: &mut FxToEur) -> App
   let (range_param, interval) = chart_range_params(range);
   let encoded = encode_symbol(&yahoo_symbol);
   let url = format!(
-    "https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?interval={interval}&range={range_param}&region=DE&lang=de-DE"
+    "https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?interval={interval}&range={range_param}&region=DE&lang=de-DE&includePrePost=true"
   );
   let client = yahoo_client()?;
   let resp = client

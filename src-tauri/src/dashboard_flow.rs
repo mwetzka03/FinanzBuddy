@@ -1,4 +1,5 @@
 use crate::calc_log::calc_log;
+use crate::commands::forecast_variable::variable_cost_ledger_excluded_from_flow_totals;
 use crate::models::TimelineEvent;
 use std::collections::HashSet;
 
@@ -24,6 +25,13 @@ fn is_flow_event(ev: &TimelineEvent) -> bool {
 
 fn is_transfer_flow_event(ev: &TimelineEvent) -> bool {
   ev.internal_transfer || ev.r#type == "transfer"
+}
+
+fn skips_flow_total(ev: &TimelineEvent) -> bool {
+  if ev.r#type != "expense" || ev.variable_cost_id.is_none() {
+    return false;
+  }
+  variable_cost_ledger_excluded_from_flow_totals(ev.variable_cost_id.as_deref(), &ev.date).unwrap_or(false)
 }
 
 /// Prognose-Ereignisse (Fix/Var/Buy-Plan, ungebuchte Einnahmen-Prognose) — nicht für Kontostand.
@@ -52,6 +60,9 @@ pub fn aggregate_period_flows(
       continue;
     }
     if !is_flow_event(ev) {
+      continue;
+    }
+    if skips_flow_total(ev) {
       continue;
     }
     if is_transfer_flow_event(ev) {
@@ -139,6 +150,9 @@ pub fn aggregate_liquid_flows(
     if ev.r#type == "adjustment" || ev.r#type == "stock_purchase" {
       continue;
     }
+    if skips_flow_total(ev) {
+      continue;
+    }
     if is_transfer_flow_event(ev) {
       if !include_transfers {
         continue;
@@ -207,6 +221,10 @@ mod tests {
       account_id: None,
       account_name: None,
       internal_transfer: false,
+      fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
     }
   }
 
@@ -220,6 +238,10 @@ mod tests {
       account_id: None,
       account_name: None,
       internal_transfer: false,
+      fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
     }
   }
 
@@ -236,6 +258,10 @@ mod tests {
         account_id: None,
         account_name: None,
         internal_transfer: false,
+        fixed_cost_id: None,
+        variable_cost_id: None,
+        buy_item_id: None,
+        notes: None,
       },
       ev("fixed_cost", "2026-05-10", -50000),
     ];
@@ -261,6 +287,10 @@ mod tests {
         account_id: Some("main".into()),
         account_name: None,
         internal_transfer: true,
+        fixed_cost_id: None,
+        variable_cost_id: None,
+        buy_item_id: None,
+        notes: None,
       },
     ];
     let flows = aggregate_period_flows(&events, "2026-04-01", "2026-04-30", true);
@@ -280,6 +310,10 @@ mod tests {
       account_id: Some("main".into()),
       account_name: None,
       internal_transfer: true,
+      fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
     }];
     let flows = aggregate_period_flows(&events, "2026-03-31", "2026-04-29", true);
     assert_eq!(flows.income_cents, 10244);
@@ -298,6 +332,10 @@ mod tests {
         account_id: None,
         account_name: None,
         internal_transfer: true,
+        fixed_cost_id: None,
+        variable_cost_id: None,
+        buy_item_id: None,
+        notes: None,
       },
     ];
     let flows = aggregate_period_flows(&events, "2026-04-01", "2026-04-30", true);

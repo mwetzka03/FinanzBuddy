@@ -5,7 +5,8 @@ import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Checkbox } from '../components/common/Checkbox';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
-import { ThAmount, TdAmount } from '../components/data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
+import { TdAmount } from '../components/data/AmountCells';
 import { AccountFormModal } from '../components/settings/AccountFormModal';
 import {
   createTransfer,
@@ -40,6 +41,18 @@ export function AccountsPage() {
   const treeRows = useMemo(() => buildAccountTreeRows(rows), [rows]);
   const mainAccountId = useMemo(() => rows.find((a) => a.isMain)?.id ?? '', [rows]);
   const mainAccountCandidates = useMemo(() => rows.filter(isMainAccountCandidate), [rows]);
+  type TransferSortKey = 'date' | 'from' | 'to' | 'amount';
+  const [transferSort, setTransferSort] = useState<SortState<TransferSortKey>>(null);
+  const sortedTransfers = useMemo(
+    () =>
+      sortByState(transfers, transferSort, {
+        date: (tx) => tx.date,
+        from: (tx) => accountMap.get(tx.fromAccountId ?? '') ?? '',
+        to: (tx) => accountMap.get(tx.toAccountId ?? '') ?? '',
+        amount: (tx) => Math.abs(tx.amountCents),
+      }),
+    [transfers, transferSort, accountMap],
+  );
 
   async function refresh() {
     const [accounts, ledger] = await Promise.all([listAccounts(), listLedgerTransactions({})]);
@@ -124,16 +137,23 @@ export function AccountsPage() {
       <ListPanel title={t('accounts.transferHistory')} hint={t('accounts.transferHint')}>
         <AmountTable>
           <div style={{ ...ui.tableHead, gridTemplateColumns: TRANSFER_COLS }}>
-            <div>{t('common.date')}</div>
-            <div>{t('common.from')}</div>
-            <div>{t('common.to')}</div>
-            <ThAmount col="amount">{t('common.amount')}</ThAmount>
+            <SortableTh label={t('common.date')} sortKey="date" sort={transferSort} onSort={setTransferSort} />
+            <SortableTh label={t('common.from')} sortKey="from" sort={transferSort} onSort={setTransferSort} />
+            <SortableTh label={t('common.to')} sortKey="to" sort={transferSort} onSort={setTransferSort} />
+            <SortableTh
+              label={t('common.amount')}
+              sortKey="amount"
+              sort={transferSort}
+              onSort={setTransferSort}
+              style={ui.thAmount}
+              align="right"
+            />
             <div />
           </div>
           {transfers.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.noTransfers')}</div>
           ) : (
-            transfers.map((tx) => (
+            sortedTransfers.map((tx) => (
               <div key={tx.id} style={{ ...ui.tableRow, gridTemplateColumns: TRANSFER_COLS }}>
                 <div style={ui.tdMono}>{formatDisplayDate(tx.date)}</div>
                 <div style={ui.tdCenter}>{accountMap.get(tx.fromAccountId ?? '') ?? t('common.none')}</div>

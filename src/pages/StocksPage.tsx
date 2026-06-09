@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Account, StockPortfolioSummary } from '../lib/types';
 
 import { DetailLink } from '../components/DetailLink';
+import { isDepotAccount, isLedgerAccount } from '../lib/accounts';
 
 import { formatDisplayDate, isoToday } from '../lib/date';
 
@@ -76,19 +77,13 @@ export function StocksPage() {
 
 
   const depotAccounts = useMemo(
-
-    () => accounts.filter((a) => a.balanceSource === 'stock_portfolio'),
-
+    () => accounts.filter((a) => isDepotAccount(a)),
     [accounts],
-
   );
 
   const paymentAccounts = useMemo(
-
-    () => accounts.filter((a) => a.balanceSource === 'ledger'),
-
+    () => accounts.filter((a) => isLedgerAccount(a) && !isDepotAccount(a)),
     [accounts],
-
   );
 
   const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts]);
@@ -103,9 +98,10 @@ export function StocksPage() {
 
         setAccounts(rows);
 
-        const defaultDepot = rows.find((a) => a.balanceSource === 'stock_portfolio');
-
-        const defaultPayment = rows.find((a) => a.name.toLowerCase().includes('traderepublic')) ?? rows.find((a) => a.balanceSource === 'ledger');
+        const defaultDepot = rows.find((a) => isDepotAccount(a));
+        const defaultPayment =
+          rows.find((a) => a.name.toLowerCase().includes('traderepublic') && isLedgerAccount(a) && !isDepotAccount(a))
+          ?? rows.find((a) => isLedgerAccount(a) && !isDepotAccount(a));
 
         if (defaultDepot) setDepotAccountId((prev) => prev || defaultDepot.id);
 

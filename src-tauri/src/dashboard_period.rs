@@ -30,6 +30,47 @@ pub fn day_before(iso: &str) -> AppResult<String> {
   Ok(iso_date(d - Duration::days(1)))
 }
 
+/// Kalendermonat mit den meisten Tagen in `range_start..=range_end` (für Einkaufszettel-Zuordnung).
+pub fn dominant_calendar_month_in_range(range_start: &str, range_end: &str) -> AppResult<String> {
+  let start = parse_iso(range_start).ok_or_else(|| AppError::Invalid("invalid range_start".into()))?;
+  let end = parse_iso(range_end).ok_or_else(|| AppError::Invalid("invalid range_end".into()))?;
+  if end < start {
+    return Err(AppError::Invalid("invalid date range".into()));
+  }
+  let mut counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+  let mut current = start;
+  loop {
+    let month = format!("{:04}-{:02}", current.year(), current.month());
+    *counts.entry(month).or_insert(0) += 1;
+    if current >= end {
+      break;
+    }
+    current = current
+      .succ_opt()
+      .ok_or_else(|| AppError::Invalid("date overflow".into()))?;
+  }
+  counts
+    .into_iter()
+    .max_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)))
+    .map(|(month, _)| month)
+    .ok_or_else(|| AppError::Invalid("empty date range".into()))
+}
+
+/// Anzeigedatum für geplanten Einkauf: erster Tag des Planmonats, falls im Zeitraum, sonst Periodenende.
+pub fn buy_planned_event_date(planned_month: &str, period_start: &str, period_end: &str) -> String {
+  let first = format!("{planned_month}-01");
+  if first.as_str() >= period_start && first.as_str() <= period_end {
+    return first;
+  }
+  if let Some((_, end)) = month_bounds(planned_month) {
+    let last = iso_date(end);
+    if last.as_str() >= period_start && last.as_str() <= period_end {
+      return last;
+    }
+  }
+  period_end.to_string()
+}
+
 pub fn month_bounds(month: &str) -> Option<(NaiveDate, NaiveDate)> {
   if month.len() != 7 {
     return None;
@@ -833,6 +874,30 @@ mod tests {
     assert_eq!(period_start, "2026-04-30");
     assert_eq!(next_forecast_salary_after(&boundaries, &period_start).as_deref(), Some(may_salary.as_str()));
     assert_eq!(day_before(&may_salary).unwrap(), "2026-05-28");
+  }
+
+  #[test]
+  fn dominant_month_picks_most_days_in_salary_period() {
+    assert_eq!(
+      dominant_calendar_month_in_range("2026-05-29", "2026-06-29").unwrap(),
+      "2026-06"
+    );
+    assert_eq!(
+      dominant_calendar_month_in_range("2026-06-30", "2026-07-30").unwrap(),
+      "2026-07"
+    );
+  }
+
+  #[test]
+  fn buy_planned_event_date_falls_in_period() {
+    assert_eq!(
+      buy_planned_event_date("2026-07", "2026-06-30", "2026-07-30"),
+      "2026-07-01"
+    );
+    assert_eq!(
+      buy_planned_event_date("2026-06", "2026-06-30", "2026-07-30"),
+      "2026-06-30"
+    );
   }
 
   #[test]

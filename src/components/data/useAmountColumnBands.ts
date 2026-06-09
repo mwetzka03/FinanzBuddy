@@ -8,8 +8,8 @@ export type AmountBandRect = {
 };
 
 /** Extra space around measured amount cells so the band does not hug the text. */
-const BAND_PAD_X = 10;
-const BAND_PAD_Y = 12;
+const BAND_PAD_X = 16;
+const BAND_PAD_Y = 14;
 
 export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
   const [bands, setBands] = useState<AmountBandRect[]>([]);

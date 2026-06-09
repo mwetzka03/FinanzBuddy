@@ -1,4 +1,4 @@
-import { monthAdd, monthEndDate, monthStartDate } from './date';
+import { isoToday, monthAdd, monthEndDate, monthStartDate } from './date';
 import { incomeAccountingMonth } from './businessDays';
 import type { IsoDate, IsoMonth, MonthView, TimelineEvent } from './types';
 
@@ -18,6 +18,13 @@ function isInternalTransferEvent(ev: TimelineEvent): boolean {
   return ev.internalTransfer === true || ev.type === 'transfer';
 }
 
+/** Gebuchte VK-Zuordnungen im laufenden Monat zählen nicht doppelt zur Prognose (wie Backend). */
+function variableCostLedgerExcludedFromFlow(ev: TimelineEvent): boolean {
+  if (ev.type !== 'expense' || ev.variableCostId == null) return false;
+  const month = ev.date.slice(0, 7) as IsoMonth;
+  return isoToday() <= monthEndDate(month);
+}
+
 /** Beitrag eines Ereignisses zu Einnahmen/Ausgaben-Summen (null = nicht in Flow). */
 export function dashboardEventFlowContribution(
   ev: TimelineEvent,
@@ -25,6 +32,7 @@ export function dashboardEventFlowContribution(
 ): number | null {
   if (isBalanceOnlyEvent(ev)) return null;
   if (isInternalTransferEvent(ev) && !accountFilter) return null;
+  if (variableCostLedgerExcludedFromFlow(ev)) return null;
   return ev.amountCents;
 }
 
@@ -567,9 +575,22 @@ export function filterDashboardEvents(
   accountFilter?: string | null,
 ): TimelineEvent[] {
   if (filter === 'all') return events;
-  if (filter === 'fixed_cost') return events.filter((ev) => ev.type === 'fixed_cost');
-  if (filter === 'variable_cost') return events.filter((ev) => ev.type === 'variable_cost');
-  if (filter === 'buy') return events.filter((ev) => ev.type === 'buy_apply' || ev.type === 'buy_planned');
+  if (filter === 'fixed_cost') {
+    return events.filter((ev) => ev.type === 'fixed_cost' || (ev.type === 'expense' && ev.fixedCostId != null));
+  }
+  if (filter === 'variable_cost') {
+    return events.filter(
+      (ev) => ev.type === 'variable_cost' || (ev.type === 'expense' && ev.variableCostId != null),
+    );
+  }
+  if (filter === 'buy') {
+    return events.filter(
+      (ev) =>
+        ev.type === 'buy_apply' ||
+        ev.type === 'buy_planned' ||
+        (ev.type === 'expense' && ev.buyItemId),
+    );
+  }
   if (filter === 'income') {
     return events.filter((ev) => isDashboardFlowIncomeEvent(ev, accountFilter));
   }
@@ -596,4 +617,12 @@ export function isPastOrCurrentMonth(month: IsoMonth): boolean {
 
 export function isCurrentDashboardPeriod(view: Pick<MonthView, 'periodIsCurrent'>): boolean {
   return view.periodIsCurrent;
+}
+
+export function isPastDashboardPeriod(view: Pick<MonthView, 'periodEnd'>): boolean {
+  return isoToday() > view.periodEnd;
+}
+
+export function isFutureDashboardPeriod(view: Pick<MonthView, 'periodStart'>): boolean {
+  return isoToday() < view.periodStart;
 }

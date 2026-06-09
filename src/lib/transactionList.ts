@@ -199,6 +199,7 @@ export function buildUnifiedEntries(input: {
   primaryIncomeForecastId?: string | null;
   variableCostNames: Map<string, string>;
   fixedCostNames: Map<string, string>;
+  buyItemNames?: Map<string, string>;
   nextDatesByForecastId: Map<string, IsoDate[]>;
   nextDatesByFixedCostId: Map<string, IsoDate[]>;
 }): UnifiedEntry[] {
@@ -210,6 +211,8 @@ export function buildUnifiedEntries(input: {
       categoryLabel = input.variableCostNames.get(row.variableCostId) ?? null;
     } else if (row.fixedCostId) {
       categoryLabel = input.fixedCostNames.get(row.fixedCostId) ?? null;
+    } else if (row.buyItemId) {
+      categoryLabel = input.buyItemNames?.get(row.buyItemId) ?? null;
     }
 
     items.push({
@@ -338,9 +341,17 @@ export function ledgerRowTitle(
   row: LedgerTransaction,
   accountMap: Map<string, string>,
   fixedCostNames?: Map<string, string>,
+  variableCostNames?: Map<string, string>,
+  buyItemNames?: Map<string, string>,
 ): string {
+  if (row.kind === 'expense' && row.variableCostId) {
+    return variableCostNames?.get(row.variableCostId) ?? row.title;
+  }
   if (row.kind === 'expense' && row.fixedCostId) {
     return fixedCostNames?.get(row.fixedCostId) ?? row.title;
+  }
+  if (row.kind === 'expense' && row.buyItemId) {
+    return buyItemNames?.get(row.buyItemId) ?? row.title;
   }
   if (row.kind === 'transfer') {
     const from = accountMap.get(row.fromAccountId ?? '') ?? '—';

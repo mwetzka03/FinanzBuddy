@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { BuyItem, IsoMonth } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Checkbox } from '../components/common/Checkbox';
 import { ColorPicker, EntityIconBadge, IconPicker } from '../components/common/AppIcon';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
-import { ThAmount, TdAmount } from '../components/data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
+import { TdAmount } from '../components/data/AmountCells';
 import { formatDisplayDate, formatDisplayMonth, toIsoMonth } from '../lib/date';
 import { useLocale } from '../i18n/LocaleProvider';
 import { formatExpenseEurFromCents, parseEurToCents } from '../lib/money';
@@ -31,12 +32,28 @@ export function BuyListPage() {
   const ui = useUi();
   const { t } = useLocale();
   const [rows, setRows] = useState<BuyItem[]>([]);
+  type BuySortKey = 'status' | 'name' | 'amount' | 'month';
+  const [sort, setSort] = useState<SortState<BuySortKey>>(null);
+  const sortedRows = useMemo(
+    () =>
+      sortByState(rows, sort, {
+        status: (r) => (r.status === 'applied' ? 1 : 0),
+        name: (r) => r.name,
+        amount: (r) => r.amountCents,
+        month: (r) => r.plannedMonth ?? '',
+      }),
+    [rows, sort],
+  );
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   async function refresh() {
-    setRows(await listBuyItems());
+    try {
+      setRows(await listBuyItems());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   useEffect(() => {
@@ -77,18 +94,23 @@ export function BuyListPage() {
         <AmountTable>
           <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
             <div />
-            <div style={ui.thName} title={t('buyList.realColumn')}>
-              Real
-            </div>
-            <div style={ui.thName}>{t('common.name')}</div>
-            <ThAmount col="cost">{t('common.amount')}</ThAmount>
-            <div style={ui.thMono}>{t('common.month')}</div>
+            <SortableTh label="Real" sortKey="status" sort={sort} onSort={setSort} style={ui.thName} />
+            <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
+            <SortableTh
+              label={t('common.amount')}
+              sortKey="amount"
+              sort={sort}
+              onSort={setSort}
+              style={ui.thAmount}
+              align="right"
+            />
+            <SortableTh label={t('common.month')} sortKey="month" sort={sort} onSort={setSort} style={ui.thMono} />
             <div />
           </div>
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.none')}</div>
           ) : (
-            rows.map((r) => (
+            sortedRows.map((r) => (
               <div key={r.id} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                 <EntityIconBadge icon={r.icon} color={r.color} size={20} />
                 <div style={ui.tdReal}>

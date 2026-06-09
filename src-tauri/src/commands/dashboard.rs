@@ -391,20 +391,10 @@ fn compute_month_view(
     true,
   )?;
 
-  let forecast_month = if period_is_current {
-    if today.len() >= 7 {
-      today[..7].to_string()
-    } else {
-      view_month.clone()
-    }
-  } else if period_end.len() >= 7 {
-    period_end[..7].to_string()
-  } else {
-    view_month.clone()
-  };
-
-  let remaining_fixed = remaining_fixed_costs_cents(&conn, &forecast_month, &account_id, &main_id)?;
-  let remaining_variable = remaining_variable_costs_cents(&conn, &forecast_month, &account_id, &main_id)?;
+  let remaining_fixed =
+    remaining_fixed_costs_cents(&conn, &period_start, &period_end, &account_id, &main_id)?;
+  let remaining_variable =
+    remaining_variable_costs_cents(&conn, &period_start, &period_end, &account_id, &main_id)?;
   let booked_fixed = booked_fixed_costs_in_range(&conn, &period_start, &period_end, &filter_scope, &main_id)?;
   let booked_variable =
     booked_variable_costs_in_range(&conn, &period_start, &period_end, &filter_scope, &main_id)?;

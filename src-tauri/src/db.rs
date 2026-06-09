@@ -232,9 +232,6 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   migrate_stock_lot_transfers(conn)?;
   migrate_pre_tracking_income_to_adjustments(conn)?;
   migrate_adjustments_to_absolute_balance(conn)?;
-  restore_bank_import_income_kind(conn)?;
-  migrate_ledger_internal_transfers(conn)?;
-  migrate_ledger_internal_transfers_v2(conn)?;
   crate::accounts::migrate_main_account_setting(conn)?;
   migrate_remove_depot_ledger_entries(conn)?;
   try_add_column(conn, "fixed_costs", "account_id", "TEXT")?;
@@ -266,6 +263,11 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   )?;
   try_add_column(conn, "ledger_transactions", "variable_cost_id", "TEXT")?;
   try_add_column(conn, "ledger_transactions", "fixed_cost_id", "TEXT")?;
+  try_add_column(conn, "ledger_transactions", "buy_item_id", "TEXT")?;
+  conn.execute(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_buy_item_id ON ledger_transactions(buy_item_id) WHERE buy_item_id IS NOT NULL",
+    [],
+  )?;
   try_add_column(conn, "variable_cost_actuals", "actual_source", "TEXT")?;
   try_add_column(conn, "variable_costs", "icon", "TEXT")?;
   try_add_column(conn, "variable_costs", "color", "TEXT")?;
@@ -283,6 +285,10 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   conn.execute("UPDATE ledger_transactions SET icon = 'calendar' WHERE icon IS NULL OR icon = '' AND kind = 'fixed_cost'", [])?;
   conn.execute("UPDATE ledger_transactions SET icon = 'target' WHERE icon IS NULL OR icon = ''", [])?;
   conn.execute("UPDATE ledger_transactions SET color = '#6366f1' WHERE color IS NULL OR color = ''", [])?;
+
+  restore_bank_import_income_kind(conn)?;
+  migrate_ledger_internal_transfers(conn)?;
+  migrate_ledger_internal_transfers_v2(conn)?;
 
   // Ensure settings exist
   conn.execute(

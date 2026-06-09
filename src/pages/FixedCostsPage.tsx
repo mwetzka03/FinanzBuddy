@@ -5,7 +5,8 @@ import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Checkbox } from '../components/common/Checkbox';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
-import { ThAmount, TdAmount } from '../components/data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
+import { TdAmount } from '../components/data/AmountCells';
 import { formatDisplayDate, isoToday } from '../lib/date';
 import { dueRuleShort } from '../lib/transactionList';
 import { useLocale } from '../i18n/LocaleProvider';
@@ -97,6 +98,21 @@ export function FixedCostsPage() {
 
   const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts]);
   const mainAccountId = useMemo(() => defaultMainAccountId(accounts), [accounts]);
+  type FixedCostSortKey = 'name' | 'cadence' | 'amount' | 'firstCharge' | 'due' | 'end' | 'account';
+  const [sort, setSort] = useState<SortState<FixedCostSortKey>>(null);
+  const sortedRows = useMemo(
+    () =>
+      sortByState(rows, sort, {
+        name: (r) => r.name,
+        cadence: (r) => r.cadence,
+        amount: (r) => r.amountCents,
+        firstCharge: (r) => r.firstChargeDate,
+        due: (r) => dueRuleShort(r.dueRule, r.dayOfMonth, t),
+        end: (r) => r.endChargeDate ?? '',
+        account: (r) => accountMap.get(r.accountId) ?? '',
+      }),
+    [rows, sort, accountMap, t],
+  );
 
   async function refresh() {
     const [accountRows, data, ledger] = await Promise.all([
@@ -158,19 +174,26 @@ export function FixedCostsPage() {
       <ListPanel hint={t('fixedCosts.listHint')}>
         <AmountTable>
           <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
-            <div style={ui.thName}>{t('common.name')}</div>
-            <div>{t('common.rhythm')}</div>
-            <ThAmount col="amount">{t('common.amount')}</ThAmount>
-            <div>{t('common.firstCharge')}</div>
-            <div>{t('common.due')}</div>
-            <div>{t('common.end')}</div>
-            <div>{t('transactions.accountLabel')}</div>
+            <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
+            <SortableTh label={t('common.rhythm')} sortKey="cadence" sort={sort} onSort={setSort} />
+            <SortableTh
+              label={t('common.amount')}
+              sortKey="amount"
+              sort={sort}
+              onSort={setSort}
+              style={ui.thAmount}
+              align="right"
+            />
+            <SortableTh label={t('common.firstCharge')} sortKey="firstCharge" sort={sort} onSort={setSort} />
+            <SortableTh label={t('common.due')} sortKey="due" sort={sort} onSort={setSort} />
+            <SortableTh label={t('common.end')} sortKey="end" sort={sort} onSort={setSort} />
+            <SortableTh label={t('transactions.accountLabel')} sortKey="account" sort={sort} onSort={setSort} />
             <div />
           </div>
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.none')}</div>
           ) : (
-            rows.map((r) => (
+            sortedRows.map((r) => (
               <div key={r.id}>
                 <div style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                   <button

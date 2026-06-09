@@ -1,8 +1,6 @@
 use super::forecast_fixed::push_fixed_cost_events_for_range;
 use super::forecast_income::push_unbooked_income_events_for_range;
-use super::forecast_variable::{
-  push_variable_cost_events_for_period, should_hide_categorized_variable_cost_event,
-};
+use super::forecast_variable::push_variable_cost_events_for_period;
 use super::helpers::{
   account_balance_source, account_filter_scope, account_liquid_map, account_name_map, account_name_of,
   event_matches_account,
@@ -16,9 +14,47 @@ use crate::dashboard_period::primary_income_occurrence_for_date;
 use crate::income_actuals::parse_income_forecast_source_id;
 use crate::dashboard_period::DashboardPeriod;
 use crate::error::AppResult;
-use crate::logic::month_add_iso;
 use crate::models::TimelineEvent;
 use rusqlite::{params, Connection, OptionalExtension};
+
+fn expense_event_display(
+  conn: &Connection,
+  kind: &str,
+  title: &str,
+  notes: Option<&str>,
+  fixed_cost_id: Option<&str>,
+  variable_cost_id: Option<&str>,
+  buy_item_id: Option<&str>,
+) -> AppResult<(String, Option<String>)> {
+  if kind != "expense" {
+    return Ok((title.to_string(), notes.map(str::to_string)));
+  }
+  if let Some(fc_id) = fixed_cost_id {
+    let name: Option<String> = conn
+      .query_row("SELECT name FROM fixed_costs WHERE id = ?1", params![fc_id], |r| r.get(0))
+      .optional()?;
+    if let Some(n) = name {
+      return Ok((n, notes.map(str::to_string)));
+    }
+  }
+  if let Some(vc_id) = variable_cost_id {
+    let name: Option<String> = conn
+      .query_row("SELECT name FROM variable_costs WHERE id = ?1", params![vc_id], |r| r.get(0))
+      .optional()?;
+    if let Some(n) = name {
+      return Ok((n, notes.map(str::to_string)));
+    }
+  }
+  if let Some(buy_id) = buy_item_id {
+    let name: Option<String> = conn
+      .query_row("SELECT name FROM buy_items WHERE id = ?1", params![buy_id], |r| r.get(0))
+      .optional()?;
+    if let Some(n) = name {
+      return Ok((n, notes.map(str::to_string)));
+    }
+  }
+  Ok((title.to_string(), notes.map(str::to_string)))
+}
 
 pub(crate) struct DashboardEventBuild {
   pub events: Vec<TimelineEvent>,
@@ -265,6 +301,10 @@ fn append_primary_employer_income_for_range(
       account_id: Some(main_id.to_string()),
       account_name: Some(account_name_of(names, main_id)),
       internal_transfer: false,
+      fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
     });
   }
   Ok(())
@@ -321,6 +361,10 @@ fn append_booked_income_actuals_for_range(
       account_id: Some(account_id.clone()),
       account_name: Some(account_name_of(names, &account_id)),
       internal_transfer: false,
+      fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
     });
   }
   Ok(())
@@ -354,7 +398,7 @@ pub(crate) fn build_dashboard_month_events(
   let ledger_start = crate::dashboard_period::day_before(&event_start)
     .unwrap_or_else(|_| event_start.clone());
   let mut stmt = conn.prepare(
-    "SELECT id, kind, title, amount_cents, date, account_id, from_account_id, to_account_id, variable_cost_id, source_id, notes, internal_transfer
+    "SELECT id, kind, title, amount_cents, date, account_id, from_account_id, to_account_id, variable_cost_id, fixed_cost_id, buy_item_id, source_id, notes, internal_transfer
      FROM ledger_transactions WHERE date >= ?1 AND date <= ?2 ORDER BY date ASC",
   )?;
   let rows = stmt.query_map(params![ledger_start.clone(), event_end.clone()], |r| {
@@ -370,17 +414,14 @@ pub(crate) fn build_dashboard_month_events(
       r.get::<_, Option<String>>(8)?,
       r.get::<_, Option<String>>(9)?,
       r.get::<_, Option<String>>(10)?,
-      r.get::<_, i64>(11)?,
+      r.get::<_, Option<String>>(11)?,
+      r.get::<_, Option<String>>(12)?,
+      r.get::<_, i64>(13)?,
     ))
   })?;
   for row in rows {
-    let (id, kind, title, amount_cents, ev_date, acc, from_id, to_id, variable_cost_id, source_id, notes, internal_transfer) = row?;
+    let (id, kind, title, amount_cents, ev_date, acc, from_id, to_id, variable_cost_id, fixed_cost_id, buy_item_id, source_id, notes, internal_transfer) = row?;
     if kind == "adjustment" {
-      continue;
-    }
-    if kind == "expense"
-      && should_hide_categorized_variable_cost_event(variable_cost_id.as_deref(), &ev_date)?
-    {
       continue;
     }
     let aid = acc.as_deref().unwrap_or("");
@@ -406,6 +447,10 @@ pub(crate) fn build_dashboard_month_events(
             account_id: Some(from.to_string()),
             account_name: Some(account_name_of(&names, from)),
             internal_transfer: true,
+            fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
           });
         } else if crate::accounts::scope_contains(&filter_scope, to) {
           out.events.push(TimelineEvent {
@@ -417,6 +462,10 @@ pub(crate) fn build_dashboard_month_events(
             account_id: Some(to.to_string()),
             account_name: Some(account_name_of(&names, to)),
             internal_transfer: true,
+            fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
           });
         }
       } else {
@@ -440,6 +489,10 @@ pub(crate) fn build_dashboard_month_events(
           account_id: mapped_account,
           account_name: Some(format!("{} → {}", account_name_of(&names, from), account_name_of(&names, to))),
           internal_transfer: true,
+          fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
         });
       }
       continue;
@@ -449,6 +502,13 @@ pub(crate) fn build_dashboard_month_events(
     }
     if kind == "buy_apply" {
       out.buys_sum += amount_cents.abs();
+    }
+    if kind == "expense" {
+      if buy_item_id.is_some() {
+        if ev_date.as_str() >= event_start.as_str() && ev_date.as_str() <= event_end.as_str() {
+          out.buys_sum += amount_cents.abs();
+        }
+      }
     }
     if kind == "income" {
       let Some(event_date) = income_event_date_in_period(
@@ -472,21 +532,38 @@ pub(crate) fn build_dashboard_month_events(
         account_id: acc.clone(),
         account_name: Some(account_name_of(&names, aid)),
         internal_transfer: false,
+        fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
       });
       continue;
     }
     if ev_date.as_str() < event_start.as_str() || ev_date.as_str() > event_end.as_str() {
       continue;
     }
+    let (display_title, event_notes) = expense_event_display(
+      &conn,
+      &kind,
+      &title,
+      notes.as_deref(),
+      fixed_cost_id.as_deref(),
+      variable_cost_id.as_deref(),
+      buy_item_id.as_deref(),
+    )?;
     out.events.push(TimelineEvent {
       id: format!("ledger:{}:{}", kind, id),
       r#type: kind,
       date: ev_date,
-      title,
+      title: display_title,
       amount_cents,
       account_id: acc.clone(),
       account_name: Some(account_name_of(&names, aid)),
       internal_transfer: false,
+      fixed_cost_id: fixed_cost_id.clone(),
+      variable_cost_id: variable_cost_id.clone(),
+      buy_item_id: buy_item_id.clone(),
+      notes: event_notes,
     });
   }
 
@@ -540,38 +617,41 @@ pub(crate) fn build_dashboard_month_events(
       conn,
       &event_start,
       &event_end,
+      account_id,
       &main_id,
       &main_name,
       &mut out.events,
       &mut out.variable_costs_sum,
     )?;
 
-    let mut month_cursor = event_start[..7].to_string();
-    let end_month = event_end[..7].to_string();
-    loop {
-      let mut stmt2 = conn.prepare(
-        "SELECT id, name, amount_cents FROM buy_items WHERE status='parked' AND planned_month = ?1",
-      )?;
-      for row in stmt2.query_map(params![month_cursor.clone()], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
-      })? {
-        let (id, name, amount_cents) = row?;
-        out.buys_sum += amount_cents;
-        out.events.push(TimelineEvent {
-          id: format!("buy_planned:{}:{}", id, month_cursor),
-          r#type: "buy_planned".into(),
-          date: format!("{}-01", month_cursor),
-          title: format!("{name} (geplant)"),
-          amount_cents: -amount_cents,
-          account_id: Some(main_id.clone()),
-          account_name: Some(main_name.clone()),
-          internal_transfer: false,
-        });
-      }
-      if month_cursor >= end_month {
-        break;
-      }
-      month_cursor = month_add_iso(&month_cursor, 1).unwrap_or(month_cursor);
+    let buy_month = if period.mode == "since_last_salary" {
+      crate::dashboard_period::dominant_calendar_month_in_range(&event_start, &event_end)?
+    } else {
+      month.to_string()
+    };
+    let mut stmt2 = conn.prepare(
+      "SELECT id, name, amount_cents FROM buy_items WHERE status='parked' AND planned_month = ?1",
+    )?;
+    for row in stmt2.query_map(params![buy_month.as_str()], |r| {
+      Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+    })? {
+      let (id, name, amount_cents) = row?;
+      let event_date = crate::dashboard_period::buy_planned_event_date(&buy_month, &event_start, &event_end);
+      out.buys_sum += amount_cents;
+      out.events.push(TimelineEvent {
+        id: format!("buy_planned:{}:{}", id, buy_month),
+        r#type: "buy_planned".into(),
+        date: event_date,
+        title: format!("{name} (geplant)"),
+        amount_cents: -amount_cents,
+        account_id: Some(main_id.clone()),
+        account_name: Some(main_name.clone()),
+        internal_transfer: false,
+        fixed_cost_id: None,
+        variable_cost_id: None,
+        buy_item_id: None,
+        notes: None,
+      });
     }
   }
 

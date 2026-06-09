@@ -36,6 +36,7 @@ export interface LedgerTransaction {
   sourceId: string | null;
   variableCostId: string | null;
   fixedCostId: string | null;
+  buyItemId: string | null;
   icon: string;
   color: string;
   createdAt: string;
@@ -142,6 +143,10 @@ export interface TimelineEvent {
   accountId?: string | null;
   accountName?: string | null;
   internalTransfer?: boolean;
+  fixedCostId?: string | null;
+  variableCostId?: string | null;
+  notes?: string | null;
+  buyItemId?: string | null;
 }
 
 export type DashboardPeriodMode = 'calendar_month' | 'since_last_salary';

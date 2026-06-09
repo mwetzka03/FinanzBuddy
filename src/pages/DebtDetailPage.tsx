@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import type { DebtContactDetail, DebtDirection, IsoDate } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
-import { ThAmount, TdAmount } from '../components/data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
+import { TdAmount } from '../components/data/AmountCells';
 import { formatDisplayDate, isoToday } from '../lib/date';
 import { useLocale } from '../i18n/LocaleProvider';
 import { formatExpenseEurFromCents, formatIncomeEurFromCents, parseEurToCents } from '../lib/money';
@@ -52,6 +53,19 @@ export function DebtDetailPage() {
     return t(`debts.direction.${direction}`);
   }
 
+  type DebtTxSortKey = 'date' | 'kind' | 'title' | 'amount';
+  const [sort, setSort] = useState<SortState<DebtTxSortKey>>(null);
+  const sortedTransactions = useMemo(
+    () =>
+      sortByState(detail?.transactions ?? [], sort, {
+        date: (tx) => tx.date,
+        kind: (tx) => directionLabel(tx.direction),
+        title: (tx) => tx.title ?? '',
+        amount: (tx) => (tx.direction === 'owed_to_me' ? tx.amountCents : -Math.abs(tx.amountCents)),
+      }),
+    [detail, sort, t],
+  );
+
   if (!detail) {
     return <div style={{ color: ui.colors.textMuted }}>{t('common.loading')}</div>;
   }
@@ -92,16 +106,23 @@ export function DebtDetailPage() {
       <ListPanel hint={t('debts.detailListHint')}>
         <AmountTable minWidth={640}>
           <div style={{ ...ui.tableHead, gridTemplateColumns: TX_TABLE_COLS }}>
-            <div>{t('common.date')}</div>
-            <div>{t('debts.kind')}</div>
-            <div style={ui.thName}>{t('common.title')}</div>
-            <ThAmount col="amount">{t('common.amount')}</ThAmount>
+            <SortableTh label={t('common.date')} sortKey="date" sort={sort} onSort={setSort} />
+            <SortableTh label={t('debts.kind')} sortKey="kind" sort={sort} onSort={setSort} />
+            <SortableTh label={t('common.title')} sortKey="title" sort={sort} onSort={setSort} style={ui.thName} />
+            <SortableTh
+              label={t('common.amount')}
+              sortKey="amount"
+              sort={sort}
+              onSort={setSort}
+              style={ui.thAmount}
+              align="right"
+            />
             <div />
           </div>
           {detail.transactions.length === 0 ? (
             <div style={ui.emptyRow}>{t('debts.noEntries')}</div>
           ) : (
-            detail.transactions.map((tx) => {
+            sortedTransactions.map((tx) => {
               const signed = tx.direction === 'owed_to_me' ? tx.amountCents : -Math.abs(tx.amountCents);
               return (
                 <div key={tx.id} style={{ ...ui.tableRow, gridTemplateColumns: TX_TABLE_COLS }}>

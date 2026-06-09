@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { IsoMonth, VariableCostCategorizedTransaction, VariableCostDetail } from '../lib/types';
-import { ThAmount, TdAmount } from '../components/data/AmountCells';
+import { TdAmount } from '../components/data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import {
   VARIABLE_COSTS_START_MONTH,
   formatDisplayDate,
@@ -62,6 +63,24 @@ export function VariableCostDetailPage() {
   const [savingMonth, setSavingMonth] = useState<string | null>(null);
 
   const months = useMemo(() => buildMonthRange(), []);
+  type MonthSortKey = 'month' | 'forecast' | 'budget' | 'actual';
+  const [sort, setSort] = useState<SortState<MonthSortKey>>(null);
+  const sortedMonths = useMemo(() => {
+    if (!detail) return months;
+    const actualMap = new Map(detail.actuals.map((a) => [a.month, a]));
+    const txByMonth = groupTransactionsByMonth(detail.transactions);
+    const forecastCents = detail.cost.amountCents;
+    return sortByState(months, sort, {
+      month: (m) => m,
+      forecast: () => forecastCents,
+      budget: () => forecastCents,
+      actual: (m) => {
+        const actual = actualMap.get(m);
+        if (actual?.actualSource === 'manual') return actual.amountCents;
+        return txSumForMonth(txByMonth.get(m) ?? []);
+      },
+    });
+  }, [months, sort, detail]);
 
   async function refresh() {
     if (!id) return;
@@ -163,13 +182,34 @@ export function VariableCostDetailPage() {
         <div style={ui.tableScroll}>
           <div style={{ ...ui.table, minWidth: 640 }}>
             <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
-              <div>Monat</div>
-              <ThAmount col="forecast">Prognose</ThAmount>
-              <ThAmount col="budget">Budget</ThAmount>
-              <ThAmount col="actual">Tatsächlich</ThAmount>
+              <SortableTh label="Monat" sortKey="month" sort={sort} onSort={setSort} />
+              <SortableTh
+                label="Prognose"
+                sortKey="forecast"
+                sort={sort}
+                onSort={setSort}
+                style={ui.thAmount}
+                align="right"
+              />
+              <SortableTh
+                label="Budget"
+                sortKey="budget"
+                sort={sort}
+                onSort={setSort}
+                style={ui.thAmount}
+                align="right"
+              />
+              <SortableTh
+                label="Tatsächlich"
+                sortKey="actual"
+                sort={sort}
+                onSort={setSort}
+                style={ui.thAmount}
+                align="right"
+              />
               <div />
             </div>
-            {months.map((month) => {
+            {sortedMonths.map((month) => {
               const editable = isMonthEditable(month);
               const monthTxs = txByMonth.get(month) ?? [];
               const txSum = txSumForMonth(monthTxs);

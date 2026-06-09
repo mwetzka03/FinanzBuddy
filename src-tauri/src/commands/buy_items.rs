@@ -21,8 +21,15 @@ fn list_buy_items_inner(state: State<'_, AppState>) -> AppResult<Vec<BuyItem>> {
   )?;
   let rows = stmt
     .query_map([], |r| {
+      let id_str: String = r.get(0)?;
+      let id = Uuid::parse_str(id_str.as_str())
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+      let created_raw: String = r.get(9)?;
+      let created_at = chrono::DateTime::parse_from_rfc3339(created_raw.as_str())
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+        .with_timezone(&Utc);
       Ok(BuyItem {
-        id: Uuid::parse_str(r.get::<_, String>(0)?.as_str()).unwrap(),
+        id,
         name: r.get(1)?,
         description: r.get(2)?,
         amount_cents: r.get(3)?,
@@ -31,9 +38,7 @@ fn list_buy_items_inner(state: State<'_, AppState>) -> AppResult<Vec<BuyItem>> {
         planned_month: r.get(6)?,
         icon: r.get::<_, Option<String>>(7)?.unwrap_or_else(|| "shop".into()),
         color: r.get::<_, Option<String>>(8)?.unwrap_or_else(|| "#ec4899".into()),
-        created_at: chrono::DateTime::parse_from_rfc3339(r.get::<_, String>(9)?.as_str())
-          .unwrap()
-          .with_timezone(&Utc),
+        created_at,
       })
     })?
     .collect::<Result<Vec<_>, _>>()?;
@@ -143,6 +148,10 @@ pub fn unapply_buy_item(state: State<'_, AppState>, id: String) -> CmdResult<()>
 
 fn unapply_buy_item_inner(state: State<'_, AppState>, id: String) -> AppResult<()> {
   let conn = state.conn.lock().unwrap();
+  conn.execute(
+    "UPDATE ledger_transactions SET buy_item_id = NULL WHERE buy_item_id = ?1",
+    params![id],
+  )?;
   conn.execute("UPDATE buy_items SET status='parked', applied_date=NULL WHERE id=?1", params![id])?;
   conn.execute(
     "DELETE FROM ledger_transactions WHERE source_id = ?1 AND kind = 'buy_apply'",

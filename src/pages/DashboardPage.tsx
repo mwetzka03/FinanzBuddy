@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import type { Account, DashboardPeriodNavItem, DayView, DebtSummary, IsoDate, IsoMonth, MonthView } from '../lib/types';
+import type { Account, DashboardPeriodNavItem, DayView, DebtSummary, IsoDate, IsoMonth, MonthView, TimelineEvent } from '../lib/types';
 
 import { AmountTable } from '../components/data/AmountTable';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
 
@@ -25,6 +27,8 @@ import {
   dashboardEventsWithRunningSubtotals,
   filterDashboardEvents,
   isCurrentDashboardPeriod,
+  isFutureDashboardPeriod,
+  isPastDashboardPeriod,
   type DashboardEventFilter,
   shouldShowKontostand,
   sumDayExpenses,
@@ -66,6 +70,74 @@ function runningSubtotalColorCents(filter: DashboardEventFilter, cents: number):
   return cents;
 }
 
+function costIdFromEventId(prefix: 'fixed_cost' | 'variable_cost', id: string): string | null {
+  if (!id.startsWith(`${prefix}:`)) return null;
+  return id.split(':')[1] ?? null;
+}
+
+function EventTitleCell({ ev }: { ev: TimelineEvent }) {
+  const ui = useUi();
+  const navigate = useNavigate();
+  const subtitle = ev.notes?.trim();
+  const fixedCostId = ev.fixedCostId ?? costIdFromEventId('fixed_cost', ev.id);
+  const variableCostId = ev.variableCostId ?? costIdFromEventId('variable_cost', ev.id);
+
+  if (fixedCostId) {
+    return (
+      <div style={ui.cellStack}>
+        <button
+          type="button"
+          className="fh-link-button"
+          style={ui.nameLink}
+          onClick={() => navigate('/fixkosten')}
+        >
+          {ev.title}
+        </button>
+        {subtitle ? <div style={ui.cellSub}>{subtitle}</div> : null}
+      </div>
+    );
+  }
+  if (variableCostId) {
+    return (
+      <div style={ui.cellStack}>
+        <button
+          type="button"
+          className="fh-link-button"
+          style={ui.nameLink}
+          onClick={() => navigate(`/variable-kosten/${variableCostId}`)}
+        >
+          {ev.title}
+        </button>
+        {subtitle ? <div style={ui.cellSub}>{subtitle}</div> : null}
+      </div>
+    );
+  }
+  if (ev.buyItemId) {
+    return (
+      <div style={ui.cellStack}>
+        <button
+          type="button"
+          className="fh-link-button"
+          style={ui.nameLink}
+          onClick={() => navigate('/einkaufszettel')}
+        >
+          {ev.title}
+        </button>
+        {subtitle ? <div style={ui.cellSub}>{subtitle}</div> : null}
+      </div>
+    );
+  }
+  if (subtitle) {
+    return (
+      <div style={ui.cellStack}>
+        <div>{ev.title}</div>
+        <div style={ui.cellSub}>{subtitle}</div>
+      </div>
+    );
+  }
+  return <div>{ev.title}</div>;
+}
+
 function EventsTable({
   events,
   filter = 'all',
@@ -77,30 +149,52 @@ function EventsTable({
 }) {
   const ui = useUi();
   const { t } = useLocale();
+  type EventSortKey = 'date' | 'account' | 'title' | 'amount' | 'subtotal';
+  const [sort, setSort] = useState<SortState<EventSortKey>>(null);
   const rows = useMemo(
     () => dashboardEventsWithRunningSubtotals(events, filter, accountFilter),
     [events, filter, accountFilter],
+  );
+  const sortedRows = useMemo(
+    () =>
+      sortByState(rows, sort, {
+        date: (r) => r.event.date,
+        account: (r) => r.event.accountName ?? '',
+        title: (r) => r.event.title,
+        amount: (r) => r.event.amountCents,
+        subtotal: (r) => r.runningSubtotalCents,
+      }),
+    [rows, sort],
   );
   const tableCols = '110px 140px 1fr 120px 120px';
 
   return (
     <AmountTable>
       <div style={{ ...ui.tableHead, gridTemplateColumns: tableCols }}>
-        <div style={ui.thName}>{t('common.date')}</div>
-        <div style={ui.thName}>{t('dashboard.accountLabel')}</div>
-        <div style={ui.thName}>{t('transactions.titleField')}</div>
-        <ThAmount col="amount">{t('common.amount')}</ThAmount>
-        <div style={{ ...ui.thAmount, textAlign: 'right' }}>{t('dashboard.runningSubtotal')}</div>
+        <SortableTh label={t('common.date')} sortKey="date" sort={sort} onSort={setSort} style={ui.thName} />
+        <SortableTh label={t('dashboard.accountLabel')} sortKey="account" sort={sort} onSort={setSort} style={ui.thName} />
+        <SortableTh label={t('transactions.titleField')} sortKey="title" sort={sort} onSort={setSort} style={ui.thName} />
+        <SortableTh label={t('common.amount')} sortKey="amount" sort={sort} onSort={setSort} style={ui.thAmount} align="right" />
+        <SortableTh
+          label={t('dashboard.runningSubtotal')}
+          sortKey="subtotal"
+          sort={sort}
+          onSort={setSort}
+          style={ui.thAmount}
+          align="right"
+        />
       </div>
 
-      {rows.length === 0 ? (
+      {sortedRows.length === 0 ? (
         <div style={ui.emptyRow}>{t('dashboard.noEvents')}</div>
       ) : (
-        rows.map(({ event: ev, runningSubtotalCents }) => (
+        sortedRows.map(({ event: ev, runningSubtotalCents }) => (
           <div key={ev.id} style={{ ...ui.tableRow, gridTemplateColumns: tableCols }}>
             <div style={{ ...ui.tdMono, textAlign: 'left' }}>{formatDisplayDate(ev.date)}</div>
             <div style={{ ...ui.tdName, color: ui.colors.textMuted, fontSize: 13 }}>{ev.accountName ?? '—'}</div>
-            <div style={ui.tdName}>{ev.title}</div>
+            <div style={ui.tdName}>
+              <EventTitleCell ev={ev} />
+            </div>
             <TdAmount col="amount" amountCents={ev.amountCents} neutral={ev.type === 'transfer'}>
               {ev.type === 'transfer'
                 ? formatEurFromCents(Math.abs(ev.amountCents))
@@ -250,6 +344,31 @@ export function DashboardPage() {
       return;
     }
     setMonth((m) => monthAdd(m, 1));
+  }
+
+  const isOnCurrentPeriod = useMemo(() => {
+    if (mode === 'day') return day === isoToday();
+    if (useSalaryPeriodNav) {
+      const current = salaryPeriods.find((p) => p.isCurrent);
+      return current ? periodStart === current.periodStart : false;
+    }
+    return month === toIsoMonth(new Date());
+  }, [mode, day, useSalaryPeriodNav, salaryPeriods, periodStart, month]);
+
+  function goToCurrentPeriod() {
+    if (mode === 'day') {
+      setDay(isoToday());
+      return;
+    }
+    if (useSalaryPeriodNav) {
+      const current = salaryPeriods.find((p) => p.isCurrent);
+      if (current) {
+        setPeriodStart(current.periodStart);
+        setMonth(isoToMonth(current.periodStart));
+      }
+      return;
+    }
+    setMonth(toIsoMonth(new Date()));
   }
 
   async function handleRefreshCalculations() {
@@ -494,7 +613,22 @@ export function DashboardPage() {
 
   const showMonthKontostand = data ? isCurrentDashboardPeriod(data) : false;
   const showRemainingCostCards = data ? isCurrentDashboardPeriod(data) : true;
-  const isPastPeriod = data != null && !data.periodIsCurrent;
+  const isPastPeriod = data != null && isPastDashboardPeriod(data);
+  const isFuturePeriod = data != null && isFutureDashboardPeriod(data);
+  const fixedCostsTileCents = data
+    ? isPastPeriod
+      ? data.bookedFixedCostsCents
+      : isFuturePeriod
+        ? data.fixedCostsCents
+        : (data.remainingFixedCostsCents ?? data.fixedCostsCents)
+    : 0;
+  const variableCostsTileCents = data
+    ? isPastPeriod
+      ? data.bookedVariableCostsCents
+      : isFuturePeriod
+        ? data.variableCostsCents
+        : (data.remainingVariableCostsCents ?? data.variableCostsCents ?? 0)
+    : 0;
   const kontostandSubtitle =
     data && data.kontostandAsOf !== isoToday()
       ? t('common.balanceAsOf', { date: formatDisplayDate(data.kontostandAsOf) })
@@ -540,28 +674,48 @@ export function DashboardPage() {
         >
           <DashboardAccountSelect accounts={accounts} value={accountFilter} onChange={setAccountFilter} />
 
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexShrink: 0, marginLeft: 'auto' }}>
-            <div style={{ display: 'flex', border: `1px solid ${ui.colors.border}`, borderRadius: 10, overflow: 'hidden' }}>
-              <button onClick={() => setMode('day')} style={{ ...ui.btn, border: 'none', background: mode === 'day' ? ui.colors.accentSoft : 'transparent' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+              marginLeft: 'auto',
+              padding: '8px 10px',
+              borderRadius: 12,
+              border: `1px solid ${ui.colors.border}`,
+              background: ui.colors.bgMuted,
+            }}
+          >
+            <div style={{ display: 'flex', border: `1px solid ${ui.colors.border}`, borderRadius: 10, overflow: 'hidden', background: ui.colors.bgCard }}>
+              <button
+                type="button"
+                onClick={() => setMode('day')}
+                style={{ ...ui.btn, border: 'none', borderRadius: 0, boxShadow: 'none', background: mode === 'day' ? ui.colors.accentSoft : 'transparent' }}
+              >
                 {t('dashboard.modeDay')}
               </button>
-              <button onClick={() => setMode('month')} style={{ ...ui.btn, border: 'none', background: mode === 'month' ? ui.colors.accentSoft : 'transparent' }}>
+              <button
+                type="button"
+                onClick={() => setMode('month')}
+                style={{ ...ui.btn, border: 'none', borderRadius: 0, boxShadow: 'none', background: mode === 'month' ? ui.colors.accentSoft : 'transparent' }}
+              >
                 {t('dashboard.modeMonth')}
               </button>
             </div>
 
             {mode === 'month' ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button style={ui.btn} onClick={goPrevPeriod} disabled={!canGoPrevMonth}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button type="button" style={{ ...ui.btn, padding: '8px 12px' }} onClick={goPrevPeriod} disabled={!canGoPrevMonth}>
                   ◀
                 </button>
-                <div style={{ minWidth: 160, textAlign: 'center' }}>{periodNavLabel}</div>
-                <button style={ui.btn} onClick={goNextPeriod} disabled={!canGoNextMonth}>
+                <div style={{ minWidth: 168, textAlign: 'center', fontWeight: 600, fontSize: 14 }}>{periodNavLabel}</div>
+                <button type="button" style={{ ...ui.btn, padding: '8px 12px' }} onClick={goNextPeriod} disabled={!canGoNextMonth}>
                   ▶
                 </button>
               </div>
             ) : (
-              <label style={{ ...ui.field, width: 190 }}>
+              <label style={{ ...ui.field, width: 190, marginBottom: 0 }}>
                 <span style={ui.label}>{t('common.date')}</span>
                 <DateInput value={day} onChange={setDay} />
               </label>
@@ -569,12 +723,33 @@ export function DashboardPage() {
 
             <button
               type="button"
-              style={ui.btn}
+              style={{ ...ui.btn, padding: '8px 12px' }}
+              onClick={goToCurrentPeriod}
+              disabled={isOnCurrentPeriod}
+              title={t('dashboard.goToCurrentPeriod')}
+            >
+              {t('dashboard.currentPeriodShort')}
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...ui.btn,
+                width: 40,
+                height: 40,
+                padding: 0,
+                borderRadius: 999,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 18,
+                lineHeight: 1,
+              }}
               onClick={() => void handleRefreshCalculations()}
               disabled={refreshing || loading}
               title={t('dashboard.refreshCalculations')}
             >
-              {refreshing ? t('dashboard.refreshingCalculations') : t('dashboard.refreshCalculations')}
+              {refreshing ? '…' : '↻'}
             </button>
           </div>
         </div>
@@ -686,15 +861,11 @@ export function DashboardPage() {
 
               <DashboardCard
 
-                title={isPastPeriod ? t('dashboard.cards.fixedCosts') : t('dashboard.cards.remainingFixedCosts')}
+                title={isPastPeriod || isFuturePeriod ? t('dashboard.cards.fixedCosts') : t('dashboard.cards.remainingFixedCosts')}
 
-                value={formatExpenseEurFromCents(
-                  isPastPeriod
-                    ? data.bookedFixedCostsCents
-                    : (data.remainingFixedCostsCents ?? data.fixedCostsCents),
-                )}
+                value={formatExpenseEurFromCents(fixedCostsTileCents)}
 
-                info={isPastPeriod ? t('dashboard.info.fixedCosts') : t('dashboard.info.remainingFixedCosts')}
+                info={isPastPeriod || isFuturePeriod ? t('dashboard.info.fixedCosts') : t('dashboard.info.remainingFixedCosts')}
 
                 active={eventFilter === 'fixed_cost'}
 
@@ -704,15 +875,11 @@ export function DashboardPage() {
 
               <DashboardCard
 
-                title={isPastPeriod ? t('dashboard.cards.variableCosts') : t('dashboard.cards.remainingVariableCosts')}
+                title={isPastPeriod || isFuturePeriod ? t('dashboard.cards.variableCosts') : t('dashboard.cards.remainingVariableCosts')}
 
-                value={formatExpenseEurFromCents(
-                  isPastPeriod
-                    ? data.bookedVariableCostsCents
-                    : (data.remainingVariableCostsCents ?? data.variableCostsCents ?? 0),
-                )}
+                value={formatExpenseEurFromCents(variableCostsTileCents)}
 
-                info={isPastPeriod ? t('dashboard.info.variableCosts') : t('dashboard.info.remainingVariableCosts')}
+                info={isPastPeriod || isFuturePeriod ? t('dashboard.info.variableCosts') : t('dashboard.info.remainingVariableCosts')}
 
                 active={eventFilter === 'variable_cost'}
 

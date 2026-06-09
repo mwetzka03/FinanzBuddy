@@ -95,6 +95,10 @@ pub(crate) fn push_depot_stock_purchase_events(
       account_id: Some(payment_account_id),
       account_name: Some(format!("Abbuchung: {payment_name}")),
       internal_transfer: false,
+      fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
     });
   }
   Ok(())

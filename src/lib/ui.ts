@@ -114,15 +114,15 @@ export function useUi() {
 
   const tableHead: CSSProperties = {
     display: 'grid',
-    padding: '14px 18px',
+    padding: '16px 24px',
     background: `linear-gradient(180deg, ${colors.bgMuted} 0%, ${colors.bgCard} 100%)`,
     fontWeight: 700,
     fontSize: 12,
     letterSpacing: '0.04em',
     textTransform: 'uppercase',
     color: colors.textMuted,
-    gap: 12,
-    columnGap: 16,
+    gap: 16,
+    columnGap: 24,
     minWidth: 0,
     alignItems: 'center',
     textAlign: 'left',
@@ -130,9 +130,9 @@ export function useUi() {
 
   const tableRow: CSSProperties = {
     display: 'grid',
-    padding: '14px 18px',
-    gap: 12,
-    columnGap: 16,
+    padding: '16px 24px',
+    gap: 16,
+    columnGap: 24,
     alignItems: 'center',
     minWidth: 0,
     borderTop: `1px solid ${colors.border}`,

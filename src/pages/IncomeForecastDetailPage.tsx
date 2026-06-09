@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { IncomeForecastDetail, IsoDate } from '../lib/types';
 import { AmountTable } from '../components/data/AmountTable';
-import { ThAmount, TdAmount } from '../components/data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
+import { TdAmount } from '../components/data/AmountCells';
 import { formatDisplayDate, isoToday, isoToMonth } from '../lib/date';
 import { formatIncomeEurFromCents, parseEurToCents } from '../lib/money';
 import { getIncomeForecastDetail, listIncomeForecastOccurrences, setIncomeForecastActual } from '../tauri/api';
@@ -44,6 +45,17 @@ export function IncomeForecastDetailPage() {
   const actualMap = useMemo(
     () => new Map(detail?.actuals.map((a) => [a.occurrenceDate, a.amountCents]) ?? []),
     [detail],
+  );
+  type OccurrenceSortKey = 'date' | 'forecast' | 'actual';
+  const [sort, setSort] = useState<SortState<OccurrenceSortKey>>(null);
+  const sortedOccurrences = useMemo(
+    () =>
+      sortByState(occurrences, sort, {
+        date: (d) => d,
+        forecast: () => detail?.forecast.amountCents ?? 0,
+        actual: (d) => actualMap.get(d) ?? detail?.forecast.amountCents ?? 0,
+      }),
+    [occurrences, sort, actualMap, detail],
   );
 
   async function saveDate(occurrenceDate: IsoDate) {
@@ -90,15 +102,29 @@ export function IncomeForecastDetailPage() {
         </p>
         <AmountTable minWidth={540}>
             <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
-              <div>Termin</div>
-              <ThAmount col="forecast">Prognose</ThAmount>
-              <ThAmount col="actual">Tatsächlich</ThAmount>
+              <SortableTh label="Termin" sortKey="date" sort={sort} onSort={setSort} />
+              <SortableTh
+                label="Prognose"
+                sortKey="forecast"
+                sort={sort}
+                onSort={setSort}
+                style={ui.thAmount}
+                align="right"
+              />
+              <SortableTh
+                label="Tatsächlich"
+                sortKey="actual"
+                sort={sort}
+                onSort={setSort}
+                style={ui.thAmount}
+                align="right"
+              />
               <div />
             </div>
             {occurrences.length === 0 ? (
               <div style={ui.emptyRow}>Keine Termine.</div>
             ) : (
-              occurrences.map((occurrenceDate) => {
+              sortedOccurrences.map((occurrenceDate) => {
                 const booked = actualMap.has(occurrenceDate);
                 const effective = booked ? actualMap.get(occurrenceDate)! : detail.forecast.amountCents;
                 const isPast = occurrenceDate <= today;

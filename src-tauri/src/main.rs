@@ -1,7 +1,9 @@
 mod accounts;
 mod bank_import;
+mod buy_assignment;
 mod calc_log;
 mod commands;
+mod cost_assignment;
 mod dashboard_cache;
 mod dashboard_compute;
 mod dashboard_flow;

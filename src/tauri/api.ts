@@ -120,6 +120,7 @@ export async function createLedgerTransaction(input: {
   notes: string | null;
   variableCostId?: string | null;
   fixedCostId?: string | null;
+  buyItemId?: string | null;
   icon?: string;
   color?: string;
 }): Promise<void> {
@@ -135,6 +136,7 @@ export async function updateLedgerTransaction(input: {
   notes: string | null;
   variableCostId?: string | null;
   fixedCostId?: string | null;
+  buyItemId?: string | null;
   icon?: string;
   color?: string;
 }): Promise<void> {

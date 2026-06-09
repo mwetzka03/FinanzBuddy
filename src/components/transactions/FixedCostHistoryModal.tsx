@@ -1,7 +1,9 @@
+import { useMemo, useState } from 'react';
 import type { Account, FixedCost, LedgerTransaction } from '../../lib/types';
 import { Modal } from '../common/Modal';
 import { AmountTable } from '../data/AmountTable';
-import { ThAmount, TdAmount } from '../data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../data/tableSort';
+import { TdAmount } from '../data/AmountCells';
 import { formatDisplayDate } from '../../lib/date';
 import { formatExpenseEurFromCents } from '../../lib/money';
 import { ledgerEntriesForFixedCost } from '../../lib/transactionList';
@@ -27,26 +29,41 @@ export function FixedCostHistoryModal({
 }: FixedCostHistoryModalProps) {
   const ui = useUi();
   const { t } = useLocale();
-  const accountMap = new Map(accounts.map((a) => [a.id, a.name]));
+  const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts]);
+  type HistorySortKey = 'date' | 'title' | 'account' | 'amount';
+  const [sort, setSort] = useState<SortState<HistorySortKey>>(null);
 
   if (!fixedCost) return null;
 
   const history = ledgerEntriesForFixedCost(fixedCost.id, ledger);
+  const sortedHistory = sortByState(history, sort, {
+    date: (tx) => tx.date,
+    title: (tx) => tx.title,
+    account: (tx) => accountMap.get(tx.accountId ?? '') ?? '',
+    amount: (tx) => Math.abs(tx.amountCents),
+  });
 
   return (
     <Modal open={open} wide title={fixedCost.name} onClose={onClose}>
       <p style={{ ...ui.sectionHint, marginTop: 0 }}>{t('fixedCosts.historyIntro')}</p>
       <AmountTable minWidth={420}>
         <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
-          <div>{t('common.date')}</div>
-          <div>{t('transactions.bookingText')}</div>
-          <div>{t('transactions.accountLabel')}</div>
-          <ThAmount col="amount">{t('common.amount')}</ThAmount>
+          <SortableTh label={t('common.date')} sortKey="date" sort={sort} onSort={setSort} />
+          <SortableTh label={t('transactions.bookingText')} sortKey="title" sort={sort} onSort={setSort} />
+          <SortableTh label={t('transactions.accountLabel')} sortKey="account" sort={sort} onSort={setSort} />
+          <SortableTh
+            label={t('common.amount')}
+            sortKey="amount"
+            sort={sort}
+            onSort={setSort}
+            style={ui.thAmount}
+            align="right"
+          />
         </div>
         {history.length === 0 ? (
           <div style={ui.emptyRow}>{t('fixedCosts.historyEmpty')}</div>
         ) : (
-          history.map((tx) => (
+          sortedHistory.map((tx) => (
             <div key={tx.id} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
               <div style={ui.tdMono}>{formatDisplayDate(tx.date)}</div>
               <div style={ui.cellStack}>

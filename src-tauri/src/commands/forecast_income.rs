@@ -198,6 +198,10 @@ pub(crate) fn push_unbooked_income_events_for_range(
         account_id: Some(main_id.to_string()),
         account_name: Some(main_name.to_string()),
         internal_transfer: false,
+        fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
       });
     }
   }

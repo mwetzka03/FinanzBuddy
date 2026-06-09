@@ -31,6 +31,7 @@ pub struct LedgerTransaction {
   pub source_id: Option<String>,
   pub variable_cost_id: Option<Uuid>,
   pub fixed_cost_id: Option<Uuid>,
+  pub buy_item_id: Option<Uuid>,
   pub icon: String,
   pub color: String,
   pub created_at: DateTime<Utc>,
@@ -156,6 +157,18 @@ pub struct TimelineEvent {
   /// Umbuchung zwischen eigenen Konten (Bankimport per IBAN oder manueller Transfer).
   #[serde(default)]
   pub internal_transfer: bool,
+  /// Fixkosten-Zuordnung bei gebuchten Ausgaben (Ledger).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub fixed_cost_id: Option<String>,
+  /// Variable-Kosten-Zuordnung bei gebuchten Ausgaben (Ledger).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub variable_cost_id: Option<String>,
+  /// Buchungstext / Notizen (z. B. bei zugewiesenen Ausgaben unter dem Titel).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub notes: Option<String>,
+  /// Einkaufszettel-Zuordnung bei gebuchten Ausgaben (Ledger).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub buy_item_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

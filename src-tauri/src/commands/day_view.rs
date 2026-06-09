@@ -2,7 +2,6 @@ use super::forecast_fixed::push_fixed_cost_events_for_range;
 use super::forecast_income::{materialize_due_income_forecasts, push_unbooked_income_events_for_range};
 use super::forecast_variable::{
   load_variable_cost_templates, variable_cost_effective_amount, variable_costs_active_month,
-  should_hide_categorized_variable_cost_event,
 };
 use super::helpers::{
   account_balance_source, account_filter_scope, account_liquid_map, account_name_map, account_name_of,
@@ -83,12 +82,7 @@ fn get_day_view_inner(state: State<'_, AppState>, date: String, account_id: Opti
       ))
     })?;
     for row in rows {
-      let (id, kind, title, amount_cents, acc, from_id, to_id, variable_cost_id) = row?;
-      if kind == "expense"
-        && should_hide_categorized_variable_cost_event(variable_cost_id.as_deref(), &date)?
-      {
-        continue;
-      }
+      let (id, kind, title, amount_cents, acc, from_id, to_id, _variable_cost_id) = row?;
       let (ev_acc_id, ev_acc_name, mapped_amount) = if kind == "transfer" {
         let from = from_id.as_deref().unwrap_or("");
         let to = to_id.as_deref().unwrap_or("");
@@ -134,6 +128,10 @@ fn get_day_view_inner(state: State<'_, AppState>, date: String, account_id: Opti
         account_id: ev_acc_id,
         account_name: Some(ev_acc_name),
         internal_transfer: kind == "transfer",
+        fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
       });
     }
   }
@@ -190,7 +188,11 @@ fn get_day_view_inner(state: State<'_, AppState>, date: String, account_id: Opti
           amount_cents: -amount,
           account_id: Some(main_id.clone()),
           account_name: Some(account_name_of(&names, &main_id)),
-        internal_transfer: false,
+          internal_transfer: false,
+          fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
         });
       }
     }

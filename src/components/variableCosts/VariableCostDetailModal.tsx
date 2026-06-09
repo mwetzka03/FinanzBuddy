@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { IsoMonth, VariableCostDetail } from '../../lib/types';
 import { Modal } from '../common/Modal';
-import { ThAmount, TdAmount } from '../data/AmountCells';
+import { TdAmount } from '../data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../data/tableSort';
 import {
   VARIABLE_COSTS_START_MONTH,
   formatDisplayDate,
@@ -43,6 +44,21 @@ export function VariableCostDetailModal({ open, costId, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [savingMonth, setSavingMonth] = useState<string | null>(null);
   const months = useMemo(() => buildMonthRange(), []);
+  type MonthSortKey = 'month' | 'forecast' | 'budget' | 'actual';
+  const [sort, setSort] = useState<SortState<MonthSortKey>>(null);
+  const sortedMonths = useMemo(
+    () =>
+      sortByState(months, sort, {
+        month: (m) => m,
+        forecast: () => detail?.cost.amountCents ?? 0,
+        budget: () => detail?.cost.amountCents ?? 0,
+        actual: (m) => {
+          const raw = drafts[m]?.trim() ?? '';
+          return raw ? parseEurToCents(raw) : 0;
+        },
+      }),
+    [months, sort, detail, drafts],
+  );
 
   useEffect(() => {
     if (!open || !costId) {
@@ -104,13 +120,34 @@ export function VariableCostDetailModal({ open, costId, onClose }: Props) {
             <div style={ui.tableScroll}>
               <div style={{ ...ui.table, minWidth: 640 }}>
                 <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
-                  <div style={ui.thName}>Monat</div>
-                  <ThAmount col="forecast">Prognose</ThAmount>
-                  <ThAmount col="budget">Budget</ThAmount>
-                  <ThAmount col="actual">Tatsächlich</ThAmount>
+                  <SortableTh label="Monat" sortKey="month" sort={sort} onSort={setSort} style={ui.thName} />
+                  <SortableTh
+                    label="Prognose"
+                    sortKey="forecast"
+                    sort={sort}
+                    onSort={setSort}
+                    style={ui.thAmount}
+                    align="right"
+                  />
+                  <SortableTh
+                    label="Budget"
+                    sortKey="budget"
+                    sort={sort}
+                    onSort={setSort}
+                    style={ui.thAmount}
+                    align="right"
+                  />
+                  <SortableTh
+                    label="Tatsächlich"
+                    sortKey="actual"
+                    sort={sort}
+                    onSort={setSort}
+                    style={ui.thAmount}
+                    align="right"
+                  />
                   <div />
                 </div>
-                {months.map((month) => (
+                {sortedMonths.map((month) => (
                   <div key={month} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                     <div style={ui.tdName}>
                       <div>{formatDisplayMonth(month)}</div>

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { FixedCost, VariableCost } from '../../lib/types';
+import type { BuyItem, FixedCost, VariableCost } from '../../lib/types';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { useUi } from '../../lib/ui';
 
-export type ExpenseCategoryKind = 'none' | 'variable' | 'fixed';
+export type ExpenseCategoryKind = 'none' | 'variable' | 'fixed' | 'buy';
 
 export type ExpenseCategoryValue = {
   kind: ExpenseCategoryKind;
@@ -13,6 +13,7 @@ export type ExpenseCategoryValue = {
 type ExpenseCategoryFieldProps = {
   variableCosts: VariableCost[];
   fixedCosts: FixedCost[];
+  buyItems: BuyItem[];
   value: ExpenseCategoryValue;
   onChange: (value: ExpenseCategoryValue) => void;
   disabled?: boolean;
@@ -21,28 +22,35 @@ type ExpenseCategoryFieldProps = {
 export function expenseCategoryFromLedger(
   variableCostId: string | null | undefined,
   fixedCostId: string | null | undefined,
+  buyItemId?: string | null | undefined,
 ): ExpenseCategoryValue {
   if (variableCostId) return { kind: 'variable', id: variableCostId };
   if (fixedCostId) return { kind: 'fixed', id: fixedCostId };
+  if (buyItemId) return { kind: 'buy', id: buyItemId };
   return { kind: 'none', id: null };
 }
 
 export function ledgerCategoryIds(value: ExpenseCategoryValue): {
   variableCostId: string | null;
   fixedCostId: string | null;
+  buyItemId: string | null;
 } {
   if (value.kind === 'variable') {
-    return { variableCostId: value.id, fixedCostId: null };
+    return { variableCostId: value.id, fixedCostId: null, buyItemId: null };
   }
   if (value.kind === 'fixed') {
-    return { variableCostId: null, fixedCostId: value.id };
+    return { variableCostId: null, fixedCostId: value.id, buyItemId: null };
   }
-  return { variableCostId: null, fixedCostId: null };
+  if (value.kind === 'buy') {
+    return { variableCostId: null, fixedCostId: null, buyItemId: value.id };
+  }
+  return { variableCostId: null, fixedCostId: null, buyItemId: null };
 }
 
 export function ExpenseCategoryField({
   variableCosts,
   fixedCosts,
+  buyItems,
   value,
   onChange,
   disabled,
@@ -51,6 +59,15 @@ export function ExpenseCategoryField({
   const ui = useUi();
   const [query, setQuery] = useState('');
 
+  const selectableBuyItems = useMemo(() => {
+    const parked = buyItems.filter((b) => b.status === 'parked');
+    if (value.kind === 'buy' && value.id && !parked.some((b) => b.id === value.id)) {
+      const current = buyItems.find((b) => b.id === value.id);
+      if (current) return [current, ...parked];
+    }
+    return parked;
+  }, [buyItems, value]);
+
   const selectedLabel = useMemo(() => {
     if (value.kind === 'variable' && value.id) {
       return variableCosts.find((c) => c.id === value.id)?.name ?? '';
@@ -58,8 +75,11 @@ export function ExpenseCategoryField({
     if (value.kind === 'fixed' && value.id) {
       return fixedCosts.find((c) => c.id === value.id)?.name ?? '';
     }
+    if (value.kind === 'buy' && value.id) {
+      return buyItems.find((b) => b.id === value.id)?.name ?? '';
+    }
     return '';
-  }, [value, variableCosts, fixedCosts]);
+  }, [value, variableCosts, fixedCosts, buyItems]);
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -71,10 +91,15 @@ export function ExpenseCategoryField({
       .filter((c) => !q || c.name.toLowerCase().includes(q))
       .slice(0, 8)
       .map((c) => ({ kind: 'fixed' as const, id: c.id, label: c.name, group: t('transactions.categoryFixed') }));
-    return [...variable, ...fixed];
-  }, [variableCosts, fixedCosts, query, t]);
+    const buy = selectableBuyItems
+      .filter((b) => !q || b.name.toLowerCase().includes(q))
+      .slice(0, 8)
+      .map((b) => ({ kind: 'buy' as const, id: b.id, label: b.name, group: t('transactions.categoryBuy') }));
+    return [...variable, ...fixed, ...buy];
+  }, [variableCosts, fixedCosts, selectableBuyItems, query, t]);
 
-  function pick(kind: 'variable' | 'fixed', id: string, label: string) {
+  function pick(kind: ExpenseCategoryKind, id: string, label: string) {
+    if (kind === 'none') return;
     onChange({ kind, id });
     setQuery(label);
   }

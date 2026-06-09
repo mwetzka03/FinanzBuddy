@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Account, VariableCost } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { ColorPicker, EntityIconBadge, IconPicker } from '../components/common/AppIcon';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
-import { ThAmount, TdAmount } from '../components/data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
+import { TdAmount } from '../components/data/AmountCells';
 import { VariableCostDetailModal } from '../components/variableCosts/VariableCostDetailModal';
 import { useLocale } from '../i18n/LocaleProvider';
 import { formatExpenseEurFromCents, parseEurToCents } from '../lib/money';
@@ -22,6 +23,17 @@ export function VariableCostsPage() {
   const ui = useUi();
   const { t } = useLocale();
   const [rows, setRows] = useState<VariableCost[]>([]);
+  type VariableCostSortKey = 'name' | 'forecast' | 'actual';
+  const [sort, setSort] = useState<SortState<VariableCostSortKey>>(null);
+  const sortedRows = useMemo(
+    () =>
+      sortByState(rows, sort, {
+        name: (r) => r.name,
+        forecast: (r) => r.amountCents,
+        actual: (r) => r.currentMonthActualCents,
+      }),
+    [rows, sort],
+  );
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -64,15 +76,29 @@ export function VariableCostsPage() {
         <AmountTable>
           <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
             <div />
-            <div style={ui.thName}>{t('common.name')}</div>
-            <ThAmount col="forecast">{t('variableCosts.forecast')}</ThAmount>
-            <ThAmount col="actual">{t('variableCosts.actual')}</ThAmount>
+            <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
+            <SortableTh
+              label={t('variableCosts.forecast')}
+              sortKey="forecast"
+              sort={sort}
+              onSort={setSort}
+              style={ui.thAmount}
+              align="right"
+            />
+            <SortableTh
+              label={t('variableCosts.actual')}
+              sortKey="actual"
+              sort={sort}
+              onSort={setSort}
+              style={ui.thAmount}
+              align="right"
+            />
             <div />
           </div>
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.none')}</div>
           ) : (
-            rows.map((r) => (
+            sortedRows.map((r) => (
               <div key={r.id} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                 <EntityIconBadge icon={r.icon} color={r.color} size={20} />
                 <div style={ui.cellStack}>

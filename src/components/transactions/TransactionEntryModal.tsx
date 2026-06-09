@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
   Account,
+  BuyItem,
   Cadence,
   FixedCost,
   FixedCostDueRule,
@@ -79,6 +80,7 @@ export function TransactionEntryModal({
   accounts,
   variableCosts,
   fixedCosts,
+  buyItems,
   incomeForecasts,
   onClose,
   onSaved,
@@ -90,6 +92,7 @@ export function TransactionEntryModal({
   accounts: Account[];
   variableCosts: VariableCost[];
   fixedCosts: FixedCost[];
+  buyItems: BuyItem[];
   incomeForecasts: IncomeForecast[];
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -160,7 +163,7 @@ export function TransactionEntryModal({
         setFromAccountId(row.accountId ?? (accountId || mainAccountId));
         setToAccountId('');
       }
-      setExpenseCategory(expenseCategoryFromLedger(row.variableCostId, row.fixedCostId));
+      setExpenseCategory(expenseCategoryFromLedger(row.variableCostId, row.fixedCostId, row.buyItemId));
       setIcon(row.icon || DEFAULT_KIND_ICON[row.kind] || 'target');
       setColor(row.color || DEFAULT_KIND_COLOR[row.kind] || '#6366f1');
       const linked = parseIncomeForecastSourceId(row.sourceId);
@@ -704,6 +707,7 @@ export function TransactionEntryModal({
                 <ExpenseCategoryField
                   variableCosts={variableCosts}
                   fixedCosts={fixedCosts}
+                  buyItems={buyItems}
                   value={expenseCategory}
                   onChange={setExpenseCategory}
                 />

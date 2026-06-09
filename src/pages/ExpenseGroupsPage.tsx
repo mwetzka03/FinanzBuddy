@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ExpenseGroupSummary, IsoDate } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
-import { ThAmount, TdAmount } from '../components/data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
+import { TdAmount } from '../components/data/AmountCells';
 import { DetailLink } from '../components/DetailLink';
 import { ListPanel } from '../components/layout/ListPanel';
 import { PageShell } from '../components/layout/PageShell';
@@ -24,6 +25,18 @@ export function ExpenseGroupsPage() {
   const ui = useUi();
   const { t } = useLocale();
   const [rows, setRows] = useState<ExpenseGroupSummary[]>([]);
+  type ExpenseGroupSortKey = 'name' | 'total' | 'lines' | 'date';
+  const [sort, setSort] = useState<SortState<ExpenseGroupSortKey>>(null);
+  const sortedRows = useMemo(
+    () =>
+      sortByState(rows, sort, {
+        name: (r) => r.name,
+        total: (r) => r.totalCents,
+        lines: (r) => r.lineCount,
+        date: (r) => r.date ?? '',
+      }),
+    [rows, sort],
+  );
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -55,15 +68,22 @@ export function ExpenseGroupsPage() {
       <ListPanel hint={t('expenseGroups.listHint')}>
         <AmountTable minWidth={640}>
           <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
-            <div style={ui.thName}>{t('common.name')}</div>
-            <ThAmount col="total">{t('common.total')}</ThAmount>
-            <div style={ui.thCenter}>{t('common.lines')}</div>
+            <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
+            <SortableTh
+              label={t('common.total')}
+              sortKey="total"
+              sort={sort}
+              onSort={setSort}
+              style={ui.thAmount}
+              align="right"
+            />
+            <SortableTh label={t('common.lines')} sortKey="lines" sort={sort} onSort={setSort} style={ui.thCenter} />
             <div style={ui.tdActions} />
           </div>
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.noGroups')}</div>
           ) : (
-            rows.map((r) => (
+            sortedRows.map((r) => (
               <div key={r.id} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                 <div style={ui.cellStack}>
                   <div style={ui.tdName}>

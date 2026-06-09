@@ -120,7 +120,7 @@ pub(crate) fn open_month_categorized_variable_cost_ledger_cents(
   Ok(sum)
 }
 
-pub(crate) fn should_hide_categorized_variable_cost_event(
+pub(crate) fn variable_cost_ledger_excluded_from_flow_totals(
   variable_cost_id: Option<&str>,
   tx_date: &str,
 ) -> AppResult<bool> {
@@ -279,17 +279,6 @@ pub(crate) fn ledger_tx_is_categorizable(conn: &rusqlite::Connection, id: &str) 
   Ok(true)
 }
 
-pub(crate) fn normalize_variable_cost_id_for_kind(kind: &str, variable_cost_id: Option<String>) -> AppResult<Option<String>> {
-  match variable_cost_id {
-    None => Ok(None),
-    Some(v) if v.trim().is_empty() => Ok(None),
-    Some(v) if kind == "expense" => Ok(Some(v)),
-    Some(_) => Err(AppError::Invalid(
-      "Kategorie ist nur für Ausgaben möglich".into(),
-    )),
-  }
-}
-
 pub(crate) fn actual_for_month(
   conn: &rusqlite::Connection,
   vc_id: &str,
@@ -443,64 +432,165 @@ pub(crate) fn variable_costs_forecast_until(conn: &rusqlite::Connection, cutoff_
   Ok(sum)
 }
 
-pub(crate) fn push_variable_cost_events_for_month(
+pub(crate) fn sum_categorized_transactions_in_range(
   conn: &rusqlite::Connection,
-  month: &str,
-  _main_id: &str,
-  _main_name: &str,
-  events: &mut Vec<TimelineEvent>,
-  variable_costs_sum: &mut i64,
-) -> AppResult<()> {
-  if !variable_costs_active_month(month) {
-    return Ok(());
+  vc_id: &str,
+  range_start: &str,
+  range_end: &str,
+) -> AppResult<i64> {
+  let sum: i64 = conn.query_row(
+    "SELECT COALESCE(SUM(ABS(amount_cents)), 0) FROM ledger_transactions
+     WHERE variable_cost_id = ?1 AND kind = 'expense' AND date >= ?2 AND date <= ?3",
+    params![vc_id, range_start, range_end],
+    |r| r.get(0),
+  )?;
+  Ok(sum)
+}
+
+pub(crate) fn sum_variable_cost_prognosis_for_period(
+  conn: &rusqlite::Connection,
+  period_start: &str,
+  period_end: &str,
+  account_filter: &Option<String>,
+  main_id: &str,
+  deduct_spent: bool,
+) -> AppResult<i64> {
+  if period_end.len() < 7 || &period_end[..7] < VARIABLE_COSTS_START_MONTH {
+    return Ok(0);
   }
-  let names = super::helpers::account_name_map(conn)?;
+  let scope = super::helpers::account_filter_scope(conn, account_filter)?;
+  let mut total = 0i64;
   for t in load_variable_cost_templates(conn)? {
-    let spent = sum_categorized_transactions_for_month(conn, &t.id, month)?;
-    let remaining = (t.amount_cents - spent).max(0);
-    if remaining == 0 {
+    if !event_matches_account(&scope, main_id, Some(t.account_id.as_str())) {
       continue;
     }
-    let charge_date = last_day_of_month_iso(month).unwrap_or_else(|| month.to_string());
-    *variable_costs_sum += remaining;
-    events.push(TimelineEvent {
-      id: format!("variable_cost:{}:{}", t.id, charge_date),
-      r#type: "variable_cost".into(),
-      date: charge_date,
-      title: format!("{} (Prognose)", t.name),
-      amount_cents: -remaining,
-      account_id: Some(t.account_id.clone()),
-      account_name: Some(super::helpers::account_name_of(&names, &t.account_id)),
-      internal_transfer: false,
-    });
+    let spent = if deduct_spent {
+      sum_categorized_transactions_in_range(conn, &t.id, period_start, period_end)?
+    } else {
+      0
+    };
+    total += (t.amount_cents - spent).max(0);
   }
-  Ok(())
+  Ok(total)
 }
 
 pub(crate) fn push_variable_cost_events_for_period(
   conn: &rusqlite::Connection,
   period_start: &str,
   period_end: &str,
+  account_filter: &Option<String>,
   main_id: &str,
-  main_name: &str,
+  _main_name: &str,
   events: &mut Vec<TimelineEvent>,
   variable_costs_sum: &mut i64,
 ) -> AppResult<()> {
-  if period_start.len() < 7 {
+  if period_start.len() < 7 || period_end.len() < 7 {
     return Ok(());
   }
-  let mut month = period_start[..7].to_string();
-  let end_month = if period_end.len() >= 7 {
-    period_end[..7].to_string()
-  } else {
-    period_end.to_string()
-  };
-  loop {
-    push_variable_cost_events_for_month(conn, &month, main_id, main_name, events, variable_costs_sum)?;
-    if month >= end_month {
-      break;
+  let today = Utc::now().date_naive().format("%Y-%m-%d").to_string();
+  if today.as_str() > period_end {
+    return Ok(());
+  }
+  let period_is_future = today.as_str() < period_start;
+  let deduct_spent = !period_is_future;
+  let scope = super::helpers::account_filter_scope(conn, account_filter)?;
+  let names = super::helpers::account_name_map(conn)?;
+  for t in load_variable_cost_templates(conn)? {
+    if !event_matches_account(&scope, main_id, Some(t.account_id.as_str())) {
+      continue;
     }
-    month = crate::logic::month_add_iso(&month, 1).unwrap_or(month);
+    let spent = if deduct_spent {
+      sum_categorized_transactions_in_range(conn, &t.id, period_start, period_end)?
+    } else {
+      0
+    };
+    let remaining = (t.amount_cents - spent).max(0);
+    if remaining == 0 {
+      continue;
+    }
+    *variable_costs_sum += remaining;
+    events.push(TimelineEvent {
+      id: format!("variable_cost:{}:{}", t.id, period_end),
+      r#type: "variable_cost".into(),
+      date: period_end.to_string(),
+      title: format!("{} (Prognose)", t.name),
+      amount_cents: -remaining,
+      account_id: Some(t.account_id.clone()),
+      account_name: Some(super::helpers::account_name_of(&names, &t.account_id)),
+      internal_transfer: false,
+      fixed_cost_id: None,
+      variable_cost_id: None,
+      buy_item_id: None,
+      notes: None,
+    });
   }
   Ok(())
+}
+
+#[cfg(test)]
+mod variable_period_tests {
+  use super::*;
+  use crate::db::{migrate, open_db};
+  use crate::models::TimelineEvent;
+  use std::path::PathBuf;
+
+  fn test_conn() -> rusqlite::Connection {
+    let path = PathBuf::from(std::env::temp_dir()).join(format!(
+      "finanzbuddy-vc-period-{}.sqlite3",
+      uuid::Uuid::new_v4()
+    ));
+    let _ = std::fs::remove_file(&path);
+    let conn = open_db(&path).unwrap();
+    migrate(&conn).unwrap();
+    conn
+      .execute(
+        "INSERT INTO accounts (id, name, is_liquid, created_at) VALUES ('acc1', 'Main', 1, datetime('now'))",
+        [],
+      )
+      .unwrap();
+    conn
+      .execute(
+        "INSERT INTO app_settings (key, value) VALUES ('main_account_id', 'acc1')",
+        [],
+      )
+      .unwrap();
+    conn
+  }
+
+  #[test]
+  fn future_period_variable_cost_ignores_spending_from_other_periods() {
+    let conn = test_conn();
+    conn
+      .execute(
+        "INSERT INTO variable_costs (id, name, amount_cents, charge_day, created_at, account_id)
+         VALUES ('vc1', 'Einkauf', 30000, 31, datetime('now'), 'acc1')",
+        [],
+      )
+      .unwrap();
+    conn
+      .execute(
+        "INSERT INTO ledger_transactions (id, date, amount_cents, account_id, kind, title, variable_cost_id, created_at)
+         VALUES ('tx1', '2026-06-15', -2850, 'acc1', 'expense', 'Shop', 'vc1', datetime('now'))",
+        [],
+      )
+      .unwrap();
+
+    let mut events = Vec::<TimelineEvent>::new();
+    let mut total = 0i64;
+    push_variable_cost_events_for_period(
+      &conn,
+      "2026-06-30",
+      "2026-07-30",
+      &None,
+      "acc1",
+      "Main",
+      &mut events,
+      &mut total,
+    )
+    .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(total, 30000);
+    assert_eq!(events[0].amount_cents, -30000);
+  }
 }

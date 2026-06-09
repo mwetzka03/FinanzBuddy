@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Account, FixedCost, IncomeForecast, IsoDate, IsoMonth, LedgerTransaction, VariableCost } from '../lib/types';
+import type { Account, BuyItem, FixedCost, IncomeForecast, IsoDate, IsoMonth, LedgerTransaction, VariableCost } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { EntityIconBadge } from '../components/common/AppIcon';
 import { AmountTable } from '../components/data/AmountTable';
+import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
 import { TransactionEntryModal } from '../components/transactions/TransactionEntryModal';
 import { FixedCostHistoryModal } from '../components/transactions/FixedCostHistoryModal';
@@ -28,6 +29,7 @@ import {
   deleteTransfer,
   getDashboardSettings,
   listAccounts,
+  listBuyItems,
   listFixedCosts,
   listIncomeForecasts,
   listLedgerTransactions,
@@ -76,6 +78,7 @@ export function TransactionsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [variableCosts, setVariableCosts] = useState<VariableCost[]>([]);
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([]);
+  const [buyItems, setBuyItems] = useState<BuyItem[]>([]);
   const [incomeForecasts, setIncomeForecasts] = useState<IncomeForecast[]>([]);
   const [accountId, setAccountId] = useState<string>('');
   const [kindFilter, setKindFilter] = useState<EntryKindFilter>('all');
@@ -101,7 +104,10 @@ export function TransactionsPage() {
   const variableCostMap = useMemo(() => new Map(variableCosts.map((c) => [c.id, c.name])), [variableCosts]);
   const fixedCostMap = useMemo(() => new Map(fixedCosts.map((c) => [c.id, c.name])), [fixedCosts]);
   const fixedCostById = useMemo(() => new Map(fixedCosts.map((c) => [c.id, c])), [fixedCosts]);
-  const tableCols = tableColumns(kindFilter);
+  const buyItemMap = useMemo(() => new Map(buyItems.map((b) => [b.id, b.name])), [buyItems]);
+  const variableCostById = useMemo(() => new Map(variableCosts.map((c) => [c.id, c])), [variableCosts]);
+  type TxSortKey = 'date' | 'kind' | 'title' | 'amount';
+  const [sort, setSort] = useState<SortState<TxSortKey>>(null);
 
   const unifiedRows = useMemo(
     () =>
@@ -114,6 +120,7 @@ export function TransactionsPage() {
         primaryIncomeForecastId,
         variableCostNames: variableCostMap,
         fixedCostNames: fixedCostMap,
+        buyItemNames: buyItemMap,
         nextDatesByForecastId,
         nextDatesByFixedCostId,
       }),
@@ -126,15 +133,29 @@ export function TransactionsPage() {
       primaryIncomeForecastId,
       variableCostMap,
       fixedCostMap,
+      buyItemMap,
       nextDatesByForecastId,
       nextDatesByFixedCostId,
     ],
   );
 
+  const tableCols = tableColumns(kindFilter);
+
   const filteredRows = useMemo(() => {
     const byKind = filterUnifiedEntries(unifiedRows, kindFilter);
     return filterUnifiedEntriesByMonth(byKind, monthFilter);
   }, [unifiedRows, kindFilter, monthFilter]);
+
+  const sortedRows = useMemo(
+    () =>
+      sortByState(filteredRows, sort, {
+        date: (e) => e.sortDate ?? e.date ?? '',
+        kind: (e) => e.displayKind,
+        title: (e) => entryTitle(e),
+        amount: (e) => entryAmountCentsForTable(e),
+      }),
+    [filteredRows, sort],
+  );
 
   async function refresh() {
     const ledgerOpts =
@@ -145,16 +166,18 @@ export function TransactionsPage() {
             start: monthStartDate(monthFilter),
             end: monthEndDate(monthFilter),
           };
-    const [ledger, forecasts, fixed, variables] = await Promise.all([
+    const [ledger, forecasts, fixed, variables, buys] = await Promise.all([
       listLedgerTransactions(ledgerOpts),
       listIncomeForecasts(),
       listFixedCosts(),
       listVariableCosts(),
+      listBuyItems(),
     ]);
     setLedgerRows(ledger);
     setIncomeForecasts(forecasts);
     setFixedCosts(fixed);
     setVariableCosts(variables);
+    setBuyItems(buys);
 
     const forecastDates = new Map<string, IsoDate[]>();
     await Promise.all(
@@ -223,8 +246,13 @@ export function TransactionsPage() {
   }
 
   function entryTitle(entry: UnifiedEntry): string {
-    if (entry.ledger) return ledgerRowTitle(entry.ledger, accountMap, fixedCostMap);
+    if (entry.ledger) return ledgerRowTitle(entry.ledger, accountMap, fixedCostMap, variableCostMap, buyItemMap);
     return entry.title;
+  }
+
+  function variableCostForEntry(entry: UnifiedEntry): VariableCost | null {
+    const id = entry.ledger?.variableCostId;
+    return id ? variableCostById.get(id) ?? null : null;
   }
 
   function renderActions(entry: UnifiedEntry) {
@@ -273,6 +301,7 @@ export function TransactionsPage() {
 
   function renderTitle(entry: UnifiedEntry) {
     const fixedCost = fixedCostForEntry(entry);
+    const variableCost = variableCostForEntry(entry);
     const title = entryTitle(entry);
     if (fixedCost) {
       return (
@@ -281,6 +310,18 @@ export function TransactionsPage() {
           className="fh-link-button"
           style={ui.nameLink}
           onClick={() => setHistoryFixedCost(fixedCost)}
+        >
+          {title}
+        </button>
+      );
+    }
+    if (variableCost) {
+      return (
+        <button
+          type="button"
+          className="fh-link-button"
+          style={ui.nameLink}
+          onClick={() => navigate(`/variable-kosten/${variableCost.id}`)}
         >
           {title}
         </button>
@@ -335,9 +376,9 @@ export function TransactionsPage() {
         <AmountTable>
           <div style={{ ...ui.tableHead, gridTemplateColumns: tableCols }}>
             <div />
-            <div style={ui.thName}>{t('common.date')}</div>
-            <div style={ui.thName}>{t('common.type')}</div>
-            <div style={ui.thName}>{t('transactions.titleField')}</div>
+            <SortableTh label={t('common.date')} sortKey="date" sort={sort} onSort={setSort} style={ui.thName} />
+            <SortableTh label={t('common.type')} sortKey="kind" sort={sort} onSort={setSort} style={ui.thName} />
+            <SortableTh label={t('transactions.titleField')} sortKey="title" sort={sort} onSort={setSort} style={ui.thName} />
             {kindFilter === 'expense' ? <div>{t('common.category')}</div> : null}
             {kindFilter === 'income_forecast' || kindFilter === 'expense_forecast' ? (
               <>
@@ -346,13 +387,13 @@ export function TransactionsPage() {
                 <div>{t('common.nextDates')}</div>
               </>
             ) : null}
-            <ThAmount col="amount">{t('common.amount')}</ThAmount>
+            <SortableTh label={t('common.amount')} sortKey="amount" sort={sort} onSort={setSort} style={ui.thAmount} align="right" />
             <div />
           </div>
-          {filteredRows.length === 0 ? (
+          {sortedRows.length === 0 ? (
             <div style={{ padding: 12, color: ui.colors.textMuted }}>{t('transactions.empty')}</div>
           ) : (
-            filteredRows.map((entry) => (
+            sortedRows.map((entry) => (
               <div key={entry.id} style={{ ...ui.tableRow, gridTemplateColumns: tableCols }}>
                 <EntityIconBadge
                   icon={entry.icon || DEFAULT_KIND_ICON[entry.displayKind] || 'target'}
@@ -363,9 +404,7 @@ export function TransactionsPage() {
                 <div style={{ textAlign: 'left' }}>{kindLabel(entry.displayKind, t)}</div>
                 <div style={ui.cellStack}>
                   {renderTitle(entry)}
-                  {entry.notes && !entry.ledger?.fixedCostId ? (
-                    <div style={ui.cellSub}>{entry.notes}</div>
-                  ) : null}
+                  {entry.notes ? <div style={ui.cellSub}>{entry.notes}</div> : null}
                 </div>
                 {kindFilter === 'expense' ? (
                   <div style={{ color: ui.colors.textMuted, fontSize: 13 }}>
@@ -414,6 +453,7 @@ export function TransactionsPage() {
         accounts={accounts}
         variableCosts={variableCosts}
         fixedCosts={fixedCosts}
+        buyItems={buyItems}
         incomeForecasts={incomeForecasts}
         onClose={() => setModalOpen(false)}
         onSaved={async () => {

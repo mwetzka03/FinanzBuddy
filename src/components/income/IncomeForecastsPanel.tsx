@@ -4,7 +4,8 @@ import { AddEntryButton } from '../common/AddEntryButton';
 import { Checkbox } from '../common/Checkbox';
 import { Modal } from '../common/Modal';
 import { AmountTable } from '../data/AmountTable';
-import { ThAmount, TdAmount } from '../data/AmountCells';
+import { SortableTh, sortByState, type SortState } from '../data/tableSort';
+import { TdAmount } from '../data/AmountCells';
 import { DetailLink } from '../DetailLink';
 import { formatDisplayDate, isoToday } from '../../lib/date';
 import { formatIncomeEurFromCents, parseEurToCents } from '../../lib/money';
@@ -102,6 +103,20 @@ export function IncomeForecastsPanel({ onError }: IncomeForecastsPanelProps) {
     () => ledgerAccounts.find((a) => a.isMain)?.id ?? ledgerAccounts[0]?.id ?? '',
     [ledgerAccounts],
   );
+  type ForecastSortKey = 'name' | 'cadence' | 'amount' | 'firstCharge' | 'due' | 'end';
+  const [sort, setSort] = useState<SortState<ForecastSortKey>>(null);
+  const sortedRows = useMemo(
+    () =>
+      sortByState(rows, sort, {
+        name: (r) => r.name,
+        cadence: (r) => r.cadence,
+        amount: (r) => r.amountCents,
+        firstCharge: (r) => r.firstChargeDate,
+        due: (r) => dueRuleLabel(r.dueRule, r.dayOfMonth, t),
+        end: (r) => r.endChargeDate ?? '',
+      }),
+    [rows, sort, t],
+  );
 
   async function refresh() {
     const [data, accountRows] = await Promise.all([listIncomeForecasts(), listAccounts()]);
@@ -151,18 +166,25 @@ export function IncomeForecastsPanel({ onError }: IncomeForecastsPanelProps) {
       <ListPanel title={t('common.entries')} hint={t('incomeForecasts.listHint')}>
         <AmountTable>
           <div style={{ ...ui.tableHead, gridTemplateColumns: DATA_COLS }}>
-            <div style={ui.thName}>{t('common.name')}</div>
-            <div>{t('common.rhythm')}</div>
-            <ThAmount col="amount">{t('common.amount')}</ThAmount>
-            <div>{t('common.firstPayment')}</div>
-            <div>{t('common.due')}</div>
-            <div>{t('common.end')}</div>
+            <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
+            <SortableTh label={t('common.rhythm')} sortKey="cadence" sort={sort} onSort={setSort} />
+            <SortableTh
+              label={t('common.amount')}
+              sortKey="amount"
+              sort={sort}
+              onSort={setSort}
+              style={ui.thAmount}
+              align="right"
+            />
+            <SortableTh label={t('common.firstPayment')} sortKey="firstCharge" sort={sort} onSort={setSort} />
+            <SortableTh label={t('common.due')} sortKey="due" sort={sort} onSort={setSort} />
+            <SortableTh label={t('common.end')} sortKey="end" sort={sort} onSort={setSort} />
             <div />
           </div>
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.noForecasts')}</div>
           ) : (
-            rows.map((r) => (
+            sortedRows.map((r) => (
               <div key={r.id}>
                 <div style={{ ...ui.tableRow, gridTemplateColumns: DATA_COLS }}>
                   <div style={ui.tdName}>
