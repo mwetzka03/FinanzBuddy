@@ -1,4 +1,4 @@
-import { COLOR_OPTIONS, ICON_OPTIONS, getIcon } from '../../lib/icons';
+import { COLOR_OPTIONS, ICON_OPTIONS, getIcon, resolveIconName } from '../../lib/icons';
 
 interface AppIconProps {
   name: string;
@@ -7,7 +7,7 @@ interface AppIconProps {
 }
 
 export function AppIcon({ name, size = 18, color }: AppIconProps) {
-  const Icon = getIcon(name);
+  const Icon = getIcon(resolveIconName(name));
   return <Icon size={size} color={color} strokeWidth={2.2} aria-hidden />;
 }
 

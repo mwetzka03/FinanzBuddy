@@ -17,7 +17,7 @@ import { EditIconButton } from '../components/EditIconButton';
 import { TrashIconButton } from '../components/TrashIconButton';
 import { OptionalDescriptionInput } from '../components/OptionalDescriptionInput';
 
-const TABLE_COLS = '48px minmax(160px, 1.4fr) 120px 120px 72px';
+const TABLE_COLS = 'minmax(160px, 1.4fr) 120px 120px 72px';
 
 export function VariableCostsPage() {
   const ui = useUi();
@@ -100,9 +100,9 @@ export function VariableCostsPage() {
           ) : (
             sortedRows.map((r) => (
               <div key={r.id} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
-                <EntityIconBadge icon={r.icon} color={r.color} size={20} />
                 <div style={ui.cellStack}>
-                  <div style={ui.tdName}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <EntityIconBadge icon={r.icon} color={r.color} size={20} />
                     <button type="button" className="fh-link-button" style={ui.nameLink} onClick={() => setDetailId(r.id)}>
                       {r.name}
                     </button>

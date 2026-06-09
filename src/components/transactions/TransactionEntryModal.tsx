@@ -374,6 +374,8 @@ export function TransactionEntryModal({
           dayOfMonth: Number(firstChargeDate.slice(8, 10) || '1'),
           endChargeDate: firstChargeDate,
           accountId: expenseAccountId || mainAccountId,
+          icon,
+          color,
         });
       } else if (isLedgerCreateType(entryType)) {
         const ledgerAccount = fromAccountId || accountId || mainAccountId;

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import type { Account, Cadence, FixedCost, FixedCostDueRule, IsoDate, LedgerTransaction } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Checkbox } from '../components/common/Checkbox';
+import { ColorPicker, EntityIconBadge, IconPicker } from '../components/common/AppIcon';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
@@ -52,6 +53,8 @@ type FixedCostFormState = {
   hasEndDate: boolean;
   endChargeDate: IsoDate | '';
   accountId: string;
+  icon: string;
+  color: string;
 };
 
 function emptyForm(mainAccountId: string): FixedCostFormState {
@@ -66,6 +69,8 @@ function emptyForm(mainAccountId: string): FixedCostFormState {
     hasEndDate: false,
     endChargeDate: '',
     accountId: mainAccountId,
+    icon: 'calendar',
+    color: '#6366f1',
   };
 }
 
@@ -80,6 +85,8 @@ function formFromRow(r: FixedCost): FixedCostFormState {
     hasEndDate: !!r.endChargeDate,
     endChargeDate: r.endChargeDate ?? '',
     accountId: r.accountId,
+    icon: r.icon,
+    color: r.color,
   };
 }
 
@@ -196,14 +203,19 @@ export function FixedCostsPage() {
             sortedRows.map((r) => (
               <div key={r.id}>
                 <div style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
-                  <button
-                    type="button"
-                    className="fh-link-button"
-                    style={ui.nameLink}
-                    onClick={() => setHistoryFixedCost(r)}
-                  >
-                    {r.name}
-                  </button>
+                <div style={ui.cellStack}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <EntityIconBadge icon={r.icon} color={r.color} size={20} />
+                    <button
+                      type="button"
+                      className="fh-link-button"
+                      style={ui.nameLink}
+                      onClick={() => setHistoryFixedCost(r)}
+                    >
+                      {r.name}
+                    </button>
+                  </div>
+                </div>
                   <div style={ui.tdCenter}>{cadenceLabel(r.cadence, t)}</div>
                   <TdAmount col="amount" amountCents={-r.amountCents}>
                     {formatExpenseEurFromCents(r.amountCents)}
@@ -233,6 +245,7 @@ export function FixedCostsPage() {
         ledger={ledgerRows}
         accounts={accounts}
         onClose={() => setHistoryFixedCost(null)}
+        onChanged={refresh}
       />
 
       <FixedCostModal
@@ -311,6 +324,8 @@ function FixedCostModal({
         dayOfMonth: form.dueRule === 'calendar_day' ? Number(form.dayOfMonth || '1') : null,
         endChargeDate: form.hasEndDate && form.endChargeDate ? form.endChargeDate : null,
         accountId: form.accountId || mainAccountId,
+        icon: form.icon,
+        color: form.color,
       };
       if (costId) {
         await updateFixedCost({ id: costId, ...payload });
@@ -336,6 +351,14 @@ function FixedCostModal({
             <input value={form.amount} onChange={(e) => patch({ amount: e.target.value })} placeholder="850,00" />
           </label>
         </div>
+        <label>
+          {t('common.icon')}
+          <IconPicker value={form.icon} onChange={(icon) => patch({ icon })} />
+        </label>
+        <label>
+          {t('common.color')}
+          <ColorPicker value={form.color} onChange={(color) => patch({ color })} />
+        </label>
         <label>
           {t('transactions.accountLabel')}
           <select value={form.accountId || mainAccountId} onChange={(e) => patch({ accountId: e.target.value })}>

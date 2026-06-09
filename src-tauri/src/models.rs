@@ -51,6 +51,8 @@ pub struct FixedCost {
   pub day_of_month: Option<i64>,
   pub end_charge_date: Option<String>,
   pub account_id: String,
+  pub icon: String,
+  pub color: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

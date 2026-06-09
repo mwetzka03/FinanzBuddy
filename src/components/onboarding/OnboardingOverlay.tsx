@@ -3,19 +3,17 @@ import { open } from '@tauri-apps/plugin-dialog';
 import type {
   Account,
   BankImportPreview,
-  Cadence,
   DashboardPeriodMode,
-  FixedCostDueRule,
   IncomeForecastDueRule,
   IsoDate,
   PrimaryIncomeImportInput,
 } from '../../lib/types';
+import type { Locale } from '../../i18n/types';
+import { translate } from '../../i18n/translate';
 import { useLocale } from '../../i18n/LocaleProvider';
 import {
   completeSetup,
-  createFixedCost,
   createIncomeForecast,
-  createVariableCost,
   importBankExport,
   listAccounts,
   listIncomeForecasts,
@@ -26,7 +24,16 @@ import {
   setPrimaryIncomeForecast,
   updateAccount,
 } from '../../tauri/api';
-import { isBankImportAccount, isMainAccountCandidate, isOberspartopf, accountsRequiringOpeningBalance, accountKindLabel, normalizeIbanInput } from '../../lib/accounts';
+import {
+  isBankImportAccount,
+  isMainAccountCandidate,
+  isOberspartopf,
+  accountKindLabel,
+  normalizeIbanInput,
+  sortOpeningBalanceAccounts,
+} from '../../lib/accounts';
+import { useTheme } from '../../lib/theme';
+import { Checkbox } from '../common/Checkbox';
 import { inferIncomeDueRule, deriveIncomeDate } from '../../lib/businessDays';
 import { dayBefore, formatDisplayDate, isoToday, monthAdd, monthStartDate } from '../../lib/date';
 import type { IsoMonth } from '../../lib/types';
@@ -36,16 +43,17 @@ import { AccountFormModal } from '../settings/AccountFormModal';
 type SetupMode = 'manual' | 'bank_import';
 
 type Step =
+  | 'language'
+  | 'theme'
+  | 'period'
   | 'mode'
   | 'accounts'
-  | 'period'
   | 'bank-files'
   | 'bank-income'
   | 'bank-balance'
   | 'bank-calendar-balance'
   | 'manual-balances'
   | 'manual-income'
-  | 'optional-costs'
   | 'review';
 
 type AccountImportDraft = {
@@ -54,30 +62,11 @@ type AccountImportDraft = {
   preview: BankImportPreview;
 };
 
-type FixedCostDraft = {
-  key: string;
-  name: string;
-  amount: string;
-  cadence: Cadence;
-  dueRule: FixedCostDueRule;
-  dayOfMonth: string;
-  accountId: string;
-};
-
-type VariableCostDraft = {
-  key: string;
-  name: string;
-  amount: string;
-  accountId: string;
-};
-
-function newDraftKey() {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-}
-
 export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
-  const { t } = useLocale();
-  const [step, setStep] = useState<Step>('mode');
+  const { t, setLocale } = useLocale();
+  const { mode: themeMode, setMode } = useTheme();
+  const [step, setStep] = useState<Step>('language');
+  const [languageChoice, setLanguageChoice] = useState<Locale>('en');
   const [setupMode, setSetupMode] = useState<SetupMode | null>(null);
   const [periodMode, setPeriodMode] = useState<DashboardPeriodMode>('since_last_salary');
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -101,8 +90,6 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
   const [manualIncomeName, setManualIncomeName] = useState('');
   const [manualIncomeEur, setManualIncomeEur] = useState('');
   const [manualDueRule, setManualDueRule] = useState<IncomeForecastDueRule>('last_business_day');
-  const [fixedCostDrafts, setFixedCostDrafts] = useState<FixedCostDraft[]>([]);
-  const [variableCostDrafts, setVariableCostDrafts] = useState<VariableCostDraft[]>([]);
 
   const refreshAccounts = useCallback(async () => {
     const rows = await listAccounts();
@@ -114,8 +101,6 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
     [accounts],
   );
 
-  const openingBalanceTargets = useMemo(() => accountsRequiringOpeningBalance(accounts), [accounts]);
-
   useEffect(() => {
     refreshAccounts().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [refreshAccounts]);
@@ -123,6 +108,11 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
   const mainAccount = useMemo(
     () => accounts.find((a) => a.isMain && isMainAccountCandidate(a)) ?? accounts.find(isMainAccountCandidate),
     [accounts],
+  );
+
+  const sortedOpeningBalanceAccounts = useMemo(
+    () => sortOpeningBalanceAccounts(accounts, mainAccount?.id),
+    [accounts, mainAccount?.id],
   );
 
   const otherAccounts = useMemo(
@@ -177,23 +167,45 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
   const openingBalanceDate = firstPrimaryIncomeDate ? dayBefore(firstPrimaryIncomeDate) : null;
 
   const calendarDashboardStartDate = useMemo((): IsoDate | null => {
-    if (!firstPrimaryIncomeDate) return null;
-    const month = monthAdd(firstPrimaryIncomeDate.slice(0, 7) as IsoMonth, 1);
-    return monthStartDate(month);
-  }, [firstPrimaryIncomeDate]);
+    if (periodMode !== 'calendar_month') return null;
+    if (firstPrimaryIncomeDate) {
+      const month = monthAdd(firstPrimaryIncomeDate.slice(0, 7) as IsoMonth, 1);
+      return monthStartDate(month);
+    }
+    return monthStartDate(monthAdd(isoToday().slice(0, 7) as IsoMonth, 1));
+  }, [periodMode, firstPrimaryIncomeDate]);
+
+  const balanceAnchorDate = useMemo((): IsoDate => {
+    if (periodMode === 'since_last_salary' && openingBalanceDate) {
+      return openingBalanceDate;
+    }
+    return isoToday();
+  }, [periodMode, openingBalanceDate]);
 
   const stepOrder = useMemo((): Step[] => {
+    const prefix: Step[] = ['language', 'theme', 'period', 'mode', 'accounts'];
     if (setupMode === 'bank_import') {
-      const base: Step[] = ['mode', 'accounts', 'period', 'bank-files', 'bank-income', 'bank-balance'];
-      if (periodMode === 'calendar_month') {
-        return [...base, 'bank-calendar-balance', 'optional-costs', 'review'];
+      const steps: Step[] = [...prefix, 'bank-files'];
+      if (periodMode === 'since_last_salary') {
+        steps.push('bank-income', 'bank-balance');
+      } else {
+        steps.push('bank-income', 'bank-calendar-balance');
       }
-      return [...base, 'optional-costs', 'review'];
+      steps.push('review');
+      return steps;
     }
-    return ['mode', 'accounts', 'period', 'manual-balances', 'manual-income', 'optional-costs', 'review'];
+    const steps: Step[] = [...prefix, 'manual-balances'];
+    if (periodMode === 'since_last_salary') {
+      steps.push('manual-income');
+    }
+    steps.push('review');
+    return steps;
   }, [setupMode, periodMode]);
 
   const stepIndex = stepOrder.indexOf(step);
+  const onLanguageStep = step === 'language';
+  const tEn = (key: string, params?: Record<string, string | number>) => translate('en', key, params);
+  const tView = onLanguageStep ? tEn : t;
 
   function goBack() {
     setError(null);
@@ -302,42 +314,52 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
       await setTimeframeConfig(periodMode === 'calendar_month', incomeDate);
 
       if (setupMode === 'bank_import') {
-        if (!mainAccount || !mainImport || !selectedEmployerIban || !openingBalanceDate) {
+        if (!mainAccount || !mainImport) {
           throw new Error(t('onboarding.errorIncompleteBank'));
         }
-        const balanceCents = parseEurToCents(openingBalancesEur[mainAccount.id]?.trim() ?? '');
-        const forecastAmountCents = parseEurToCents(forecastAmountEur.trim());
-        const primaryIncome: PrimaryIncomeImportInput = {
-          forecastName: forecastName.trim(),
-          forecastAmountCents,
-          useImportAmount: false,
-          employerIban: normalizeIbanInput(selectedEmployerIban),
-          dueRule: bankDueRule,
-          dayOfMonth: bankDueRule === 'calendar_day' ? Number(bankDayOfMonth || '1') : null,
-        };
 
-        for (const account of openingBalanceTargets) {
-          if (account.id === mainAccount.id) continue;
-          const raw = openingBalancesEur[account.id]?.trim();
-          if (!raw) continue;
-          await setAccountOpeningBalance(account.id, parseEurToCents(raw), openingBalanceDate);
-        }
+        if (periodMode === 'calendar_month') {
+          if (!calendarDashboardStartDate) {
+            throw new Error(t('onboarding.errorIncompleteBank'));
+          }
+          if (!selectedEmployerIban) {
+            throw new Error(t('onboarding.errorEmployerIban'));
+          }
+          const primaryIncome: PrimaryIncomeImportInput = {
+            forecastName: forecastName.trim(),
+            forecastAmountCents: parseEurToCents(forecastAmountEur.trim()),
+            useImportAmount: false,
+            employerIban: normalizeIbanInput(selectedEmployerIban)!,
+            dueRule: bankDueRule,
+            dayOfMonth: bankDueRule === 'calendar_day' ? Number(bankDayOfMonth || '1') : null,
+          };
+          const mainBalanceCents = parseEurToCents(calendarBalancesEur[mainAccount.id]?.trim() ?? '');
 
-        for (const account of bankImportAccounts) {
-          const draft = importsByAccountId.get(account.id);
-          if (!draft) continue;
-          const isMain = account.id === mainAccount.id;
-          await importBankExport({
-            filePath: draft.filePath,
-            accountId: account.id,
-            currentBalanceCents: isMain ? balanceCents : undefined,
-            balanceAsOfDate: isMain ? openingBalanceDate : undefined,
-            primaryIncome: isMain ? primaryIncome : undefined,
-          });
-        }
+          for (const account of sortedOpeningBalanceAccounts) {
+            if (account.id === mainAccount.id) continue;
+            const raw = calendarBalancesEur[account.id]?.trim();
+            if (!raw) continue;
+            await setAccountOpeningBalance(
+              account.id,
+              parseEurToCents(raw),
+              calendarDashboardStartDate,
+            );
+          }
 
-        if (periodMode === 'calendar_month' && calendarDashboardStartDate) {
-          for (const account of openingBalanceTargets) {
+          for (const account of bankImportAccounts) {
+            const draft = importsByAccountId.get(account.id);
+            if (!draft) continue;
+            const isMain = account.id === mainAccount.id;
+            await importBankExport({
+              filePath: draft.filePath,
+              accountId: account.id,
+              currentBalanceCents: isMain ? mainBalanceCents : undefined,
+              balanceAsOfDate: isMain ? calendarDashboardStartDate : undefined,
+              primaryIncome: isMain ? primaryIncome : undefined,
+            });
+          }
+
+          for (const account of sortedOpeningBalanceAccounts) {
             const raw = calendarBalancesEur[account.id]?.trim();
             if (!raw) {
               throw new Error(t('onboarding.errorAccountBalance', { name: account.name }));
@@ -348,10 +370,43 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
               calendarDashboardStartDate,
             );
           }
+        } else {
+          const balanceCents = parseEurToCents(openingBalancesEur[mainAccount.id]?.trim() ?? '');
+          if (!selectedEmployerIban) {
+            throw new Error(t('onboarding.errorEmployerIban'));
+          }
+          const primaryIncome: PrimaryIncomeImportInput = {
+            forecastName: forecastName.trim(),
+            forecastAmountCents: parseEurToCents(forecastAmountEur.trim()),
+            useImportAmount: false,
+            employerIban: normalizeIbanInput(selectedEmployerIban)!,
+            dueRule: bankDueRule,
+            dayOfMonth: bankDueRule === 'calendar_day' ? Number(bankDayOfMonth || '1') : null,
+          };
+
+          for (const account of sortedOpeningBalanceAccounts) {
+            if (account.id === mainAccount.id) continue;
+            const raw = openingBalancesEur[account.id]?.trim();
+            if (!raw) continue;
+            await setAccountOpeningBalance(account.id, parseEurToCents(raw), balanceAnchorDate);
+          }
+
+          for (const account of bankImportAccounts) {
+            const draft = importsByAccountId.get(account.id);
+            if (!draft) continue;
+            const isMain = account.id === mainAccount.id;
+            await importBankExport({
+              filePath: draft.filePath,
+              accountId: account.id,
+              currentBalanceCents: isMain ? balanceCents : undefined,
+              balanceAsOfDate: isMain ? balanceAnchorDate : undefined,
+              primaryIncome: isMain ? primaryIncome : undefined,
+            });
+          }
         }
       } else {
         const today = isoToday();
-        for (const account of openingBalanceTargets) {
+        for (const account of sortedOpeningBalanceAccounts) {
           const raw = manualBalancesEur[account.id]?.trim();
           if (!raw) continue;
           await setAccountOpeningBalance(account.id, parseEurToCents(raw), today);
@@ -373,32 +428,6 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
         }
       }
 
-      const today = isoToday();
-      for (const draft of fixedCostDrafts) {
-        if (!draft.name.trim() || !draft.amount.trim()) continue;
-        await createFixedCost({
-          name: draft.name.trim(),
-          amountCents: parseEurToCents(draft.amount.trim()),
-          cadence: draft.cadence,
-          firstChargeDate: today,
-          active: true,
-          notes: null,
-          dueRule: draft.dueRule,
-          dayOfMonth: draft.dueRule === 'calendar_day' ? Number(draft.dayOfMonth || '1') : null,
-          endChargeDate: null,
-          accountId: draft.accountId || mainAccount?.id || accounts[0]?.id || '',
-        });
-      }
-      for (const draft of variableCostDrafts) {
-        if (!draft.name.trim() || !draft.amount.trim()) continue;
-        await createVariableCost({
-          name: draft.name.trim(),
-          amountCents: parseEurToCents(draft.amount.trim()),
-          notes: null,
-          accountId: draft.accountId || mainAccount?.id || accounts[0]?.id || '',
-        });
-      }
-
       await completeSetup(setupMode);
       onComplete();
     } catch (e) {
@@ -409,6 +438,15 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
   }
 
   async function onContinueFromStep() {
+    if (step === 'language') {
+      setLocale(languageChoice);
+      goNext();
+      return;
+    }
+    if (step === 'theme') {
+      goNext();
+      return;
+    }
     if (step === 'mode') {
       if (!setupMode) {
         setError(t('onboarding.errorMode'));
@@ -443,24 +481,19 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
       return;
     }
     if (step === 'bank-income') {
-      if (
-        (periodMode === 'since_last_salary' || periodMode === 'calendar_month') &&
-        !selectedEmployerIban
-      ) {
+      if (!selectedEmployerIban) {
         setError(t('onboarding.errorEmployerIban'));
         return;
       }
-      if (periodMode === 'since_last_salary' && !forecastName.trim()) {
+      if (!forecastName.trim()) {
         setError(t('settings.bankImport.primaryIncomeNameRequired'));
         return;
       }
-      if (periodMode === 'since_last_salary') {
-        try {
-          parseEurToCents(forecastAmountEur.trim());
-        } catch {
-          setError(t('onboarding.errorForecastAmount'));
-          return;
-        }
+      try {
+        parseEurToCents(forecastAmountEur.trim());
+      } catch {
+        setError(t('onboarding.errorForecastAmount'));
+        return;
       }
       goNext();
       return;
@@ -470,7 +503,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
         setError(t('onboarding.errorMainBalance'));
         return;
       }
-      for (const account of openingBalanceTargets) {
+      for (const account of sortedOpeningBalanceAccounts) {
         if (account.id === mainAccount?.id) continue;
         if (!openingBalancesEur[account.id]?.trim()) {
           setError(t('onboarding.errorAccountBalance', { name: account.name }));
@@ -478,7 +511,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
         }
       }
       try {
-        for (const account of openingBalanceTargets) {
+        for (const account of sortedOpeningBalanceAccounts) {
           const raw = openingBalancesEur[account.id]?.trim();
           if (!raw) continue;
           parseEurToCents(raw);
@@ -495,14 +528,14 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
         setError(t('onboarding.errorIncompleteBank'));
         return;
       }
-      for (const account of openingBalanceTargets) {
+      for (const account of sortedOpeningBalanceAccounts) {
         if (!calendarBalancesEur[account.id]?.trim()) {
           setError(t('onboarding.errorAccountBalance', { name: account.name }));
           return;
         }
       }
       try {
-        for (const account of openingBalanceTargets) {
+        for (const account of sortedOpeningBalanceAccounts) {
           const raw = calendarBalancesEur[account.id]?.trim();
           if (!raw) continue;
           parseEurToCents(raw);
@@ -519,7 +552,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
         setError(t('onboarding.errorMainBalance'));
         return;
       }
-      for (const account of openingBalanceTargets) {
+      for (const account of sortedOpeningBalanceAccounts) {
         if (account.id === mainAccount?.id) continue;
         if (!manualBalancesEur[account.id]?.trim()) {
           setError(t('onboarding.errorAccountBalance', { name: account.name }));
@@ -530,16 +563,10 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
       return;
     }
     if (step === 'manual-income') {
-      if (periodMode === 'since_last_salary') {
-        if (!manualIncomeName.trim() || !manualIncomeEur.trim()) {
-          setError(t('onboarding.errorManualIncome'));
-          return;
-        }
+      if (!manualIncomeName.trim() || !manualIncomeEur.trim()) {
+        setError(t('onboarding.errorManualIncome'));
+        return;
       }
-      goNext();
-      return;
-    }
-    if (step === 'optional-costs') {
       goNext();
       return;
     }
@@ -547,17 +574,16 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
 
   useEffect(() => {
     if (step !== 'bank-income') return;
-    if (periodMode !== 'since_last_salary' && periodMode !== 'calendar_month') return;
     if (selectedEmployerIban || employerIbanOptions.length === 0) return;
     applyEmployerIban(employerIbanOptions[0][0]);
-  }, [step, periodMode, selectedEmployerIban, employerIbanOptions]);
+  }, [step, selectedEmployerIban, employerIbanOptions]);
 
   return (
     <div className="fh-onboarding-overlay" role="dialog" aria-modal="true">
       <div className="fh-onboarding-panel">
         <header className="fh-onboarding-header">
-          <h1>{t('onboarding.title')}</h1>
-          <p>{t('onboarding.subtitle')}</p>
+          <h1>{tView('onboarding.title')}</h1>
+          <p>{tView('onboarding.subtitle')}</p>
         </header>
 
         <div className="fh-onboarding-progress">
@@ -567,6 +593,52 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
         </div>
 
         {error ? <p className="fh-onboarding-error">{error}</p> : null}
+
+        {step === 'language' ? (
+          <section className="fh-onboarding-step">
+            <h2>{tEn('onboarding.languageTitle')}</h2>
+            <p className="fh-onboarding-hint">{tEn('onboarding.languageHint')}</p>
+            <div className="fh-segment stretch">
+              <button
+                type="button"
+                className={languageChoice === 'en' ? 'active' : ''}
+                onClick={() => setLanguageChoice('en')}
+              >
+                {tEn('onboarding.languageEn')}
+              </button>
+              <button
+                type="button"
+                className={languageChoice === 'de' ? 'active' : ''}
+                onClick={() => setLanguageChoice('de')}
+              >
+                {tEn('onboarding.languageDe')}
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {step === 'theme' ? (
+          <section className="fh-onboarding-step">
+            <h2>{t('onboarding.themeTitle')}</h2>
+            <p className="fh-onboarding-hint">{t('onboarding.themeHint')}</p>
+            <div className="fh-segment stretch">
+              <button
+                type="button"
+                className={themeMode === 'light' ? 'active' : ''}
+                onClick={() => setMode('light')}
+              >
+                {t('onboarding.themeLight')}
+              </button>
+              <button
+                type="button"
+                className={themeMode === 'dark' ? 'active' : ''}
+                onClick={() => setMode('dark')}
+              >
+                {t('onboarding.themeDark')}
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         {step === 'mode' ? (
           <section className="fh-onboarding-step">
@@ -615,14 +687,9 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
                     autoCapitalize="characters"
                   />
                 </label>
-                <label className="fh-checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={mainLiquid}
-                    onChange={(e) => setMainLiquid(e.target.checked)}
-                  />
+                <Checkbox checked={mainLiquid} onChange={setMainLiquid}>
                   {t('accounts.liquid')}
-                </label>
+                </Checkbox>
               </div>
             ) : (
               <p className="fh-onboarding-hint">{t('onboarding.errorMainAccount')}</p>
@@ -680,6 +747,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
           <section className="fh-onboarding-step">
             <h2>{t('onboarding.bankFilesTitle')}</h2>
             <p className="fh-onboarding-hint">{t('onboarding.bankFilesHint')}</p>
+            <p className="fh-onboarding-hint">{t('onboarding.bankFilesMainOnlyWarning')}</p>
             <p className="fh-onboarding-hint">{t('onboarding.bankVerifyHint')}</p>
             {bankImportAccounts.map((account) => {
               const draft = importsByAccountId.get(account.id);
@@ -704,104 +772,106 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
           <section className="fh-onboarding-step">
             <h2>{t('onboarding.bankIncomeTitle')}</h2>
             <p className="fh-onboarding-hint">{t('onboarding.bankIncomeHint')}</p>
-            {periodMode === 'since_last_salary' ? (
+            {employerIbanOptions.length === 0 ? (
+              <p className="fh-onboarding-hint">{t('onboarding.bankIncomePreviewEmpty')}</p>
+            ) : (
               <>
-                {employerIbanOptions.length === 0 ? (
-                  <p className="fh-onboarding-hint">{t('onboarding.bankIncomePreviewEmpty')}</p>
-                ) : (
-                  <>
-                    <label>
-                      {t('onboarding.bankIncomePickIban')}
-                      <select
-                        value={selectedEmployerIban}
-                        onChange={(e) => applyEmployerIban(e.target.value)}
-                      >
-                        <option value="">{t('onboarding.bankIncomeSelectIban')}</option>
-                        {employerIbanOptions.map(([iban, txs]) => (
-                          <option key={iban} value={iban}>
-                            {iban} ({txs.length})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {selectedEmployerIban && firstPrimaryIncomeDate && openingBalanceDate ? (
-                      <p className="fh-onboarding-hint">
-                        {t('onboarding.bankIncomeFirstSalary', {
-                          date: formatDisplayDate(firstPrimaryIncomeDate),
-                          balanceDate: formatDisplayDate(openingBalanceDate),
-                        })}
-                      </p>
-                    ) : null}
-                    {incomesForSelectedIban.length > 0 ? (
-                      <>
-                        <h3>{t('onboarding.bankIncomePreview')}</h3>
-                        <ul className="fh-onboarding-list">
-                          {[...incomesForSelectedIban]
-                            .sort((a, b) => a.date.localeCompare(b.date))
-                            .map((tx) => (
-                              <li key={tx.index}>
-                                {formatDisplayDate(tx.date as IsoDate)} · {tx.title} ·{' '}
-                                {formatEurFromCents(tx.amountCents)}
-                              </li>
-                            ))}
-                        </ul>
-                      </>
-                    ) : null}
-                  </>
-                )}
                 <label>
-                  {t('settings.bankImport.primaryIncomeName')}
-                  <input value={forecastName} onChange={(e) => setForecastName(e.target.value)} />
-                </label>
-                <label>
-                  {t('onboarding.bankIncomeForecastAmount')}
-                  <input
-                    value={forecastAmountEur}
-                    onChange={(e) => setForecastAmountEur(e.target.value)}
-                    placeholder="0,00"
-                  />
-                  <span className="fh-form-hint">{t('onboarding.bankIncomeForecastAmountHint')}</span>
-                </label>
-                <label>
-                  {t('onboarding.bankIncomeDueRule')}
+                  {t('onboarding.bankIncomePickIban')}
                   <select
-                    value={bankDueRule}
-                    onChange={(e) => setBankDueRule(e.target.value as IncomeForecastDueRule)}
+                    value={selectedEmployerIban}
+                    onChange={(e) => applyEmployerIban(e.target.value)}
                   >
-                    <option value="last_business_day">{t('dueRule.last_business_day')}</option>
-                    <option value="first_business_day">{t('dueRule.first_business_day')}</option>
-                    <option value="calendar_day">{t('dueRule.calendar_day')}</option>
+                    <option value="">{t('onboarding.bankIncomeSelectIban')}</option>
+                    {employerIbanOptions.map(([iban, txs]) => (
+                      <option key={iban} value={iban}>
+                        {iban} ({txs.length})
+                      </option>
+                    ))}
                   </select>
                 </label>
-                {bankDueRule === 'calendar_day' ? (
-                  <label>
-                    {t('onboarding.bankIncomeDayOfMonth')}
-                    <input
-                      type="number"
-                      min={1}
-                      max={31}
-                      value={bankDayOfMonth}
-                      onChange={(e) => setBankDayOfMonth(e.target.value)}
-                    />
-                  </label>
+                {selectedEmployerIban && firstPrimaryIncomeDate && calendarDashboardStartDate && periodMode === 'calendar_month' ? (
+                  <p className="fh-onboarding-hint">
+                    {t('onboarding.bankIncomeFirstSalaryCalendar', {
+                      date: formatDisplayDate(firstPrimaryIncomeDate),
+                      balanceDate: formatDisplayDate(calendarDashboardStartDate),
+                    })}
+                  </p>
+                ) : null}
+                {selectedEmployerIban && firstPrimaryIncomeDate && openingBalanceDate && periodMode === 'since_last_salary' ? (
+                  <p className="fh-onboarding-hint">
+                    {t('onboarding.bankIncomeFirstSalary', {
+                      date: formatDisplayDate(firstPrimaryIncomeDate),
+                      balanceDate: formatDisplayDate(openingBalanceDate),
+                    })}
+                  </p>
+                ) : null}
+                {incomesForSelectedIban.length > 0 ? (
+                  <>
+                    <h3>{t('onboarding.bankIncomePreview')}</h3>
+                    <ul className="fh-onboarding-list">
+                      {[...incomesForSelectedIban]
+                        .sort((a, b) => a.date.localeCompare(b.date))
+                        .map((tx) => (
+                          <li key={tx.index}>
+                            {formatDisplayDate(tx.date as IsoDate)} · {tx.title} ·{' '}
+                            {formatEurFromCents(tx.amountCents)}
+                          </li>
+                        ))}
+                    </ul>
+                  </>
                 ) : null}
               </>
-            ) : (
-              <p>{t('onboarding.bankIncomeOptional')}</p>
             )}
+            <label>
+              {t('settings.bankImport.primaryIncomeName')}
+              <input value={forecastName} onChange={(e) => setForecastName(e.target.value)} />
+            </label>
+            <label>
+              {t('onboarding.bankIncomeForecastAmount')}
+              <input
+                value={forecastAmountEur}
+                onChange={(e) => setForecastAmountEur(e.target.value)}
+                placeholder="0,00"
+              />
+              <span className="fh-form-hint">{t('onboarding.bankIncomeForecastAmountHint')}</span>
+            </label>
+            <label>
+              {t('onboarding.bankIncomeDueRule')}
+              <select
+                value={bankDueRule}
+                onChange={(e) => setBankDueRule(e.target.value as IncomeForecastDueRule)}
+              >
+                <option value="last_business_day">{t('dueRule.last_business_day')}</option>
+                <option value="first_business_day">{t('dueRule.first_business_day')}</option>
+                <option value="calendar_day">{t('dueRule.calendar_day')}</option>
+              </select>
+            </label>
+            {bankDueRule === 'calendar_day' ? (
+              <label>
+                {t('onboarding.bankIncomeDayOfMonth')}
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={bankDayOfMonth}
+                  onChange={(e) => setBankDayOfMonth(e.target.value)}
+                />
+              </label>
+            ) : null}
           </section>
         ) : null}
 
-        {step === 'bank-balance' && openingBalanceDate ? (
+        {step === 'bank-balance' ? (
           <section className="fh-onboarding-step">
             <h2>{t('onboarding.bankBalanceTitle')}</h2>
             <p className="fh-onboarding-hint">
               {periodMode === 'calendar_month'
-                ? t('onboarding.bankBalanceHintImport', { date: formatDisplayDate(openingBalanceDate) })
-                : t('onboarding.bankBalanceHint', { date: formatDisplayDate(openingBalanceDate) })}
+                ? t('onboarding.bankBalanceHintImport', { date: formatDisplayDate(balanceAnchorDate) })
+                : t('onboarding.bankBalanceHint', { date: formatDisplayDate(balanceAnchorDate) })}
             </p>
             <p className="fh-onboarding-hint">{t('onboarding.bankBalanceOberspartopfHint')}</p>
-            {openingBalanceTargets.map((account) => {
+            {sortedOpeningBalanceAccounts.map((account) => {
               const parentName = account.parentAccountId
                 ? accounts.find((a) => a.id === account.parentAccountId)?.name
                 : null;
@@ -818,7 +888,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
                   placeholder="0,00"
                 />
                 <span className="fh-form-hint">
-                  {t('onboarding.bankBalanceLabel', { date: formatDisplayDate(openingBalanceDate) })}
+                  {t('onboarding.bankBalanceLabel', { date: formatDisplayDate(balanceAnchorDate) })}
                 </span>
               </label>
               );
@@ -835,7 +905,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
               })}
             </p>
             <p className="fh-onboarding-hint">{t('onboarding.bankBalanceOberspartopfHint')}</p>
-            {openingBalanceTargets.map((account) => {
+            {sortedOpeningBalanceAccounts.map((account) => {
               const parentName = account.parentAccountId
                 ? accounts.find((a) => a.id === account.parentAccountId)?.name
                 : null;
@@ -866,7 +936,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
             <h2>{t('onboarding.manualBalancesTitle')}</h2>
             <p className="fh-onboarding-hint">{t('onboarding.manualBalancesHint')}</p>
             <p className="fh-onboarding-hint">{t('onboarding.bankBalanceOberspartopfHint')}</p>
-            {openingBalanceTargets.map((account) => {
+            {sortedOpeningBalanceAccounts.map((account) => {
               const parentName = account.parentAccountId
                 ? accounts.find((a) => a.id === account.parentAccountId)?.name
                 : null;
@@ -887,7 +957,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
           </section>
         ) : null}
 
-        {step === 'manual-income' && periodMode === 'since_last_salary' ? (
+        {step === 'manual-income' ? (
           <section className="fh-onboarding-step">
             <h2>{t('onboarding.manualIncomeTitle')}</h2>
             <p className="fh-onboarding-hint">{t('onboarding.manualIncomeHint')}</p>
@@ -907,172 +977,6 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
                 <option value="calendar_day">{t('dueRule.calendar_day')}</option>
               </select>
             </label>
-          </section>
-        ) : null}
-
-        {step === 'manual-income' && periodMode === 'calendar_month' ? (
-          <section className="fh-onboarding-step">
-            <h2>{t('onboarding.manualIncomeTitle')}</h2>
-            <p className="fh-onboarding-hint">{t('onboarding.manualIncomeSkip')}</p>
-          </section>
-        ) : null}
-
-        {step === 'optional-costs' ? (
-          <section className="fh-onboarding-step">
-            <h2>{t('onboarding.costsTitle')}</h2>
-            <p className="fh-onboarding-hint">{t('onboarding.costsHint')}</p>
-
-            <h3>{t('onboarding.costsFixedTitle')}</h3>
-            {fixedCostDrafts.map((draft) => (
-              <div key={draft.key} className="fh-onboarding-cost-draft">
-                <div className="fh-form-row">
-                  <label>
-                    {t('common.name')}
-                    <input
-                      value={draft.name}
-                      onChange={(e) =>
-                        setFixedCostDrafts((prev) =>
-                          prev.map((row) => (row.key === draft.key ? { ...row, name: e.target.value } : row)),
-                        )
-                      }
-                    />
-                  </label>
-                  <label>
-                    {t('common.amount')}
-                    <input
-                      value={draft.amount}
-                      onChange={(e) =>
-                        setFixedCostDrafts((prev) =>
-                          prev.map((row) => (row.key === draft.key ? { ...row, amount: e.target.value } : row)),
-                        )
-                      }
-                      placeholder="0,00"
-                    />
-                  </label>
-                </div>
-                <div className="fh-form-row">
-                  <label>
-                    {t('common.rhythm')}
-                    <select
-                      value={draft.cadence}
-                      onChange={(e) =>
-                        setFixedCostDrafts((prev) =>
-                          prev.map((row) =>
-                            row.key === draft.key ? { ...row, cadence: e.target.value as Cadence } : row,
-                          ),
-                        )
-                      }
-                    >
-                      <option value="monthly">{t('cadence.monthly')}</option>
-                      <option value="yearly">{t('cadence.yearly')}</option>
-                      <option value="weekly">{t('cadence.weekly')}</option>
-                      <option value="biweekly">{t('cadence.biweekly')}</option>
-                    </select>
-                  </label>
-                  <label>
-                    {t('common.due')}
-                    <select
-                      value={draft.dueRule}
-                      onChange={(e) =>
-                        setFixedCostDrafts((prev) =>
-                          prev.map((row) =>
-                            row.key === draft.key
-                              ? { ...row, dueRule: e.target.value as FixedCostDueRule }
-                              : row,
-                          ),
-                        )
-                      }
-                    >
-                      <option value="calendar_day">{t('dueRule.calendar_day')}</option>
-                      <option value="first_business_day">{t('dueRule.first_business_day')}</option>
-                      <option value="last_business_day">{t('dueRule.last_business_day')}</option>
-                    </select>
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  className="fh-btn ghost"
-                  onClick={() => setFixedCostDrafts((prev) => prev.filter((row) => row.key !== draft.key))}
-                >
-                  {t('onboarding.costsRemove')}
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className="fh-btn ghost"
-              onClick={() =>
-                setFixedCostDrafts((prev) => [
-                  ...prev,
-                  {
-                    key: newDraftKey(),
-                    name: '',
-                    amount: '',
-                    cadence: 'monthly',
-                    dueRule: 'calendar_day',
-                    dayOfMonth: '1',
-                    accountId: mainAccount?.id ?? '',
-                  },
-                ])
-              }
-            >
-              {t('onboarding.costsAddFixed')}
-            </button>
-
-            <h3>{t('onboarding.costsVariableTitle')}</h3>
-            {variableCostDrafts.map((draft) => (
-              <div key={draft.key} className="fh-onboarding-cost-draft">
-                <div className="fh-form-row">
-                  <label>
-                    {t('common.name')}
-                    <input
-                      value={draft.name}
-                      onChange={(e) =>
-                        setVariableCostDrafts((prev) =>
-                          prev.map((row) => (row.key === draft.key ? { ...row, name: e.target.value } : row)),
-                        )
-                      }
-                    />
-                  </label>
-                  <label>
-                    {t('common.amount')}
-                    <input
-                      value={draft.amount}
-                      onChange={(e) =>
-                        setVariableCostDrafts((prev) =>
-                          prev.map((row) => (row.key === draft.key ? { ...row, amount: e.target.value } : row)),
-                        )
-                      }
-                      placeholder="0,00"
-                    />
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  className="fh-btn ghost"
-                  onClick={() => setVariableCostDrafts((prev) => prev.filter((row) => row.key !== draft.key))}
-                >
-                  {t('onboarding.costsRemove')}
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className="fh-btn ghost"
-              onClick={() =>
-                setVariableCostDrafts((prev) => [
-                  ...prev,
-                  {
-                    key: newDraftKey(),
-                    name: '',
-                    amount: '',
-                    accountId: mainAccount?.id ?? '',
-                  },
-                ])
-              }
-            >
-              {t('onboarding.costsAddVariable')}
-            </button>
           </section>
         ) : null}
 
@@ -1099,7 +1003,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
         <footer className="fh-onboarding-footer">
           {stepIndex > 0 ? (
             <button type="button" className="fh-btn ghost" disabled={busy} onClick={goBack}>
-              {t('common.back')}
+              {tView('common.back')}
             </button>
           ) : (
             <span />
@@ -1110,7 +1014,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
             </button>
           ) : (
             <button type="button" className="fh-btn primary" disabled={busy} onClick={onContinueFromStep}>
-              {t('common.next')}
+              {onLanguageStep ? tEn('common.next') : t('common.next')}
             </button>
           )}
         </footer>

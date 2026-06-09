@@ -183,7 +183,7 @@ function BuyItemModal({
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [plannedMonth, setPlannedMonth] = useState<IsoMonth>(() => toIsoMonth(new Date()));
-  const [icon, setIcon] = useState('wallet');
+  const [icon, setIcon] = useState('shop');
   const [color, setColor] = useState('#ec4899');
 
   useEffect(() => {
@@ -192,7 +192,7 @@ function BuyItemModal({
     setDescription(existing?.description ?? '');
     setAmount(existing ? (existing.amountCents / 100).toFixed(2).replace('.', ',') : '');
     setPlannedMonth(existing?.plannedMonth ?? toIsoMonth(new Date()));
-    setIcon(existing?.icon ?? 'wallet');
+    setIcon(existing?.icon ?? 'shop');
     setColor(existing?.color ?? '#ec4899');
   }, [open, existing]);
 

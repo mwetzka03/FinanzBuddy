@@ -311,6 +311,7 @@ export const de = {
     namePlaceholder: 'Miete',
     listHint: 'Auf den Namen klicken für die Buchungshistorie. Fixkosten werden automatisch zum Fälligkeitstermin abgebucht.',
     historyIntro: 'Alle vergangenen Ist-Buchungen, die dieser Fixkosten zugeordnet sind.',
+    removeAssignment: 'Zuordnung entfernen',
     historyEmpty: 'Noch keine zugeordneten Buchungen.',
     formHint:
       'Wiederkehrende Fixkosten mit Rhythmus und Fälligkeit — Abbuchungen erfolgen automatisch zum Termin.',
@@ -535,6 +536,14 @@ export const de = {
   onboarding: {
     title: 'Willkommen bei FinanzBuddy',
     subtitle: 'Richte die App in wenigen Schritten ein. Du kannst jederzeit zurückgehen.',
+    languageTitle: 'Sprache',
+    languageHint: 'Wähle die App-Sprache. Du kannst sie später in den Einstellungen ändern.',
+    languageEn: 'English',
+    languageDe: 'Deutsch',
+    themeTitle: 'Darstellung',
+    themeHint: 'Wähle Hell- oder Dunkelmodus. Du kannst das später in den Einstellungen ändern.',
+    themeLight: 'Hell',
+    themeDark: 'Dunkel',
     modeTitle: 'Wie möchtest du starten?',
     modeHint: 'Manuell: Kontostände selbst eingeben. Bankimport (Beta): CSV-Export der Bank laden.',
     manualTitle: 'Manuell',
@@ -556,6 +565,8 @@ export const de = {
       'Diese Wahl gilt dauerhaft für die App. Kalendermonat oder Gehaltszeiträume ab der Haupteinnahme.',
     bankFilesTitle: 'Bankexporte laden',
     bankFilesHint: 'Für das Hauptkonto ist genau eine CSV-Datei erforderlich. Für andere Konten optional je eine Datei.',
+    bankFilesMainOnlyWarning:
+      'Der Bankimport wurde nur für das Hauptkonto getestet. Importe für andere Konten können Fehler verursachen.',
     pickFile: 'Datei wählen',
     noFile: 'Keine Datei',
     bankIncomeTitle: 'Haupteinnahme',
@@ -568,6 +579,8 @@ export const de = {
     bankIncomeForecastAmount: 'Prognosebetrag (EUR)',
     bankIncomeForecastAmountHint: 'Gilt für zukünftige Prognose-Termine. Import-Buchungen bleiben unverändert.',
     bankIncomeFirstSalary: 'Erste Gehaltsbuchung: {{date}} — Startkontostand am {{balanceDate}}',
+    bankIncomeFirstSalaryCalendar:
+      'Erste Haupteinnahme: {{date}} — Dashboard-Startkontostand am {{balanceDate}}',
     bankIncomeDueRule: 'Fälligkeit (monatlich)',
     bankIncomeDayOfMonth: 'Kalendertag',
     bankIncomeOptional:

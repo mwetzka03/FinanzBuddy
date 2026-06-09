@@ -268,6 +268,10 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_buy_item_id ON ledger_transactions(buy_item_id) WHERE buy_item_id IS NOT NULL",
     [],
   )?;
+  try_add_column(conn, "fixed_costs", "icon", "TEXT")?;
+  try_add_column(conn, "fixed_costs", "color", "TEXT")?;
+  conn.execute("UPDATE fixed_costs SET icon = 'calendar' WHERE icon IS NULL OR icon = ''", [])?;
+  conn.execute("UPDATE fixed_costs SET color = '#6366f1' WHERE color IS NULL OR color = ''", [])?;
   try_add_column(conn, "variable_cost_actuals", "actual_source", "TEXT")?;
   try_add_column(conn, "variable_costs", "icon", "TEXT")?;
   try_add_column(conn, "variable_costs", "color", "TEXT")?;
@@ -275,16 +279,18 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   try_add_column(conn, "buy_items", "color", "TEXT")?;
   try_add_column(conn, "ledger_transactions", "icon", "TEXT")?;
   try_add_column(conn, "ledger_transactions", "color", "TEXT")?;
-  conn.execute("UPDATE variable_costs SET icon = 'wallet' WHERE icon IS NULL OR icon = ''", [])?;
+  conn.execute("UPDATE variable_costs SET icon = 'shop' WHERE icon IS NULL OR icon = ''", [])?;
   conn.execute("UPDATE variable_costs SET color = '#6366f1' WHERE color IS NULL OR color = ''", [])?;
   conn.execute("UPDATE buy_items SET icon = 'shop' WHERE icon IS NULL OR icon = ''", [])?;
   conn.execute("UPDATE buy_items SET color = '#ec4899' WHERE color IS NULL OR color = ''", [])?;
   conn.execute("UPDATE ledger_transactions SET icon = 'banknote' WHERE icon IS NULL OR icon = '' AND kind = 'income'", [])?;
   conn.execute("UPDATE ledger_transactions SET icon = 'shop' WHERE icon IS NULL OR icon = '' AND kind IN ('expense', 'buy_apply', 'buy_planned')", [])?;
-  conn.execute("UPDATE ledger_transactions SET icon = 'wallet' WHERE icon IS NULL OR icon = '' AND kind = 'transfer'", [])?;
+  conn.execute("UPDATE ledger_transactions SET icon = 'repeat' WHERE icon IS NULL OR icon = '' AND kind = 'transfer'", [])?;
   conn.execute("UPDATE ledger_transactions SET icon = 'calendar' WHERE icon IS NULL OR icon = '' AND kind = 'fixed_cost'", [])?;
   conn.execute("UPDATE ledger_transactions SET icon = 'target' WHERE icon IS NULL OR icon = ''", [])?;
   conn.execute("UPDATE ledger_transactions SET color = '#6366f1' WHERE color IS NULL OR color = ''", [])?;
+
+  migrate_deprecated_icons(conn)?;
 
   restore_bank_import_income_kind(conn)?;
   migrate_ledger_internal_transfers(conn)?;
@@ -801,6 +807,51 @@ fn migrate_ledger_internal_transfers_v2(conn: &Connection) -> AppResult<()> {
     [],
   )?;
   let _ = crate::dashboard_cache::invalidate(conn);
+  Ok(())
+}
+
+fn migrate_deprecated_icons(conn: &Connection) -> AppResult<()> {
+  let replacements: &[(&str, &str)] = &[
+    ("flame", "zap"),
+    ("brain", "lightbulb"),
+    ("cleaning", "home"),
+    ("award", "trophy"),
+    ("medal", "trophy"),
+    ("crown", "trophy"),
+    ("star", "target"),
+    ("sparkles", "party"),
+    ("smile", "party"),
+    ("wallet", "repeat"),
+    ("coins", "banknote"),
+    ("users", "target"),
+    ("flower", "leaf"),
+    ("tree", "leaf"),
+    ("rocket", "target"),
+    ("scissors", "target"),
+    ("arrow-left-right", "repeat"),
+  ];
+  for (old, new) in replacements {
+    conn.execute(
+      "UPDATE fixed_costs SET icon = ?1 WHERE icon = ?2",
+      rusqlite::params![new, old],
+    )?;
+    conn.execute(
+      "UPDATE variable_costs SET icon = ?1 WHERE icon = ?2",
+      rusqlite::params![new, old],
+    )?;
+    conn.execute(
+      "UPDATE buy_items SET icon = ?1 WHERE icon = ?2",
+      rusqlite::params![new, old],
+    )?;
+    conn.execute(
+      "UPDATE ledger_transactions SET icon = ?1 WHERE icon = ?2",
+      rusqlite::params![new, old],
+    )?;
+  }
+  conn.execute(
+    "UPDATE variable_costs SET icon = 'shop' WHERE icon = 'repeat'",
+    [],
+  )?;
   Ok(())
 }
 

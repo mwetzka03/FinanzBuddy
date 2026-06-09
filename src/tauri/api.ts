@@ -226,6 +226,10 @@ export async function previewFixedCost(id: string): Promise<IsoDate[]> {
   return await invoke('preview_fixed_cost', { id });
 }
 
+export async function unassignFixedCostTransaction(ledgerId: string): Promise<void> {
+  await invoke('unassign_fixed_cost_transaction', { ledgerId });
+}
+
 export async function listBuyItems(): Promise<BuyItem[]> {
   return await invoke('list_buy_items');
 }

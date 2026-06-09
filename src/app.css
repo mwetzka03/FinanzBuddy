@@ -918,6 +918,10 @@ label {
   width: min(680px, 100%);
 }
 
+.fh-modal-bleed {
+  width: min(960px, calc(100vw - 2rem));
+}
+
 .fh-modal-header {
   display: flex;
   align-items: center;
@@ -1291,7 +1295,7 @@ label {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: rgba(15, 23, 42, 0.72);
+  background: color-mix(in srgb, var(--fh-bg) 72%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1303,6 +1307,7 @@ label {
   max-height: min(90vh, 900px);
   overflow: auto;
   background: var(--fh-bg, #fff);
+  color: var(--fh-text, #0f172a);
   border-radius: 16px;
   border: 1px solid var(--fh-border, #e2e8f0);
   box-shadow: 0 24px 48px rgba(15, 23, 42, 0.25);
@@ -1315,6 +1320,7 @@ label {
 .fh-onboarding-header h1 {
   margin: 0 0 8px;
   font-size: 1.5rem;
+  color: var(--fh-text, #0f172a);
 }
 
 .fh-onboarding-header p {
@@ -1341,6 +1347,7 @@ label {
 .fh-onboarding-step h2 {
   margin: 0 0 8px;
   font-size: 1.15rem;
+  color: var(--fh-text, #0f172a);
 }
 
 .fh-onboarding-hint {
@@ -1365,6 +1372,11 @@ label {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  color: var(--fh-text, #0f172a);
+}
+
+.fh-onboarding-card strong {
+  color: var(--fh-text, #0f172a);
 }
 
 .fh-onboarding-card.selected {
@@ -1380,6 +1392,7 @@ label {
 .fh-onboarding-list {
   margin: 0 0 16px;
   padding-left: 1.2rem;
+  color: var(--fh-text, #0f172a);
 }
 
 .fh-onboarding-row {
@@ -1389,6 +1402,11 @@ label {
   align-items: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--fh-border, #e2e8f0);
+  color: var(--fh-text, #0f172a);
+}
+
+.fh-onboarding-row strong {
+  color: var(--fh-text, #0f172a);
 }
 
 .fh-onboarding-error {
@@ -1410,28 +1428,45 @@ label {
   gap: 6px;
   margin-bottom: 12px;
   font-weight: 600;
+  color: var(--fh-text, #0f172a);
+}
+
+.fh-onboarding-step label.fh-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 12px;
 }
 
 .fh-onboarding-step input,
 .fh-onboarding-step select {
-  border: 1px solid var(--fh-border, #e2e8f0);
+  border: 1px solid var(--fh-border);
   border-radius: 12px;
   padding: 0.55rem 0.75rem;
-  background: var(--fh-bg-muted, #f8fafc);
+  background: var(--fh-bg-card);
+  color: var(--fh-text);
+  font-weight: 400;
 }
 
 .fh-onboarding-main-account {
-  border: 1px solid var(--fh-border, #e2e8f0);
+  border: 1px solid var(--fh-border);
   border-radius: 14px;
   padding: 12px 14px;
   margin-bottom: 16px;
-  background: var(--fh-bg-muted, #f8fafc);
+  background: var(--fh-bg-muted);
+  color: var(--fh-text, #0f172a);
 }
 
 .fh-onboarding-main-account h3,
 .fh-onboarding-step h3 {
   margin: 0 0 8px;
   font-size: 1rem;
+  color: var(--fh-text, #0f172a);
+}
+
+.fh-onboarding-step .fh-segment button.active {
+  background: var(--fh-bg-card, #ffffff);
+  color: var(--fh-accent, #7c3aed);
 }
 
 .fh-onboarding-cost-draft {

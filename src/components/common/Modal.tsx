@@ -8,9 +8,10 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  bleed?: boolean;
 }
 
-export function Modal({ open, title, onClose, children, wide }: ModalProps) {
+export function Modal({ open, title, onClose, children, wide, bleed }: ModalProps) {
   const { t } = useLocale();
 
   useEffect(() => {
@@ -27,7 +28,7 @@ export function Modal({ open, title, onClose, children, wide }: ModalProps) {
   return (
     <div className="fh-modal-backdrop" onClick={onClose}>
       <div
-        className={`fh-modal${wide ? ' fh-modal-wide' : ''}`}
+        className={`fh-modal${wide ? ' fh-modal-wide' : ''}${bleed ? ' fh-modal-bleed' : ''}`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

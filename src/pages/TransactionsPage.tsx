@@ -444,6 +444,7 @@ export function TransactionsPage() {
         ledger={ledgerRows}
         accounts={accounts}
         onClose={() => setHistoryFixedCost(null)}
+        onChanged={refresh}
       />
 
       <TransactionEntryModal

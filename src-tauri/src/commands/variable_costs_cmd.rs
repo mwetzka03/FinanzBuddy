@@ -96,7 +96,7 @@ fn get_variable_cost_detail_inner(state: State<'_, AppState>, id: String) -> App
     String,
   ) = conn
     .query_row(
-      "SELECT name, amount_cents, notes, COALESCE(icon, 'wallet'), COALESCE(color, '#6366f1'), created_at, COALESCE(account_id, ?2) FROM variable_costs WHERE id = ?1",
+      "SELECT name, amount_cents, notes, COALESCE(icon, 'shop'), COALESCE(color, '#6366f1'), created_at, COALESCE(account_id, ?2) FROM variable_costs WHERE id = ?1",
       params![id, main_id],
       |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
     )
@@ -232,6 +232,7 @@ fn update_variable_cost_inner(state: State<'_, AppState>, input: UpdateVariableC
     "UPDATE variable_costs SET name=?2, amount_cents=?3, notes=?4, icon=?5, color=?6 WHERE id=?1",
     params![input.id, input.name, input.amount_cents, input.notes, icon, color],
   )?;
+  crate::cost_assignment::sync_ledger_style_for_variable_cost(&conn, &input.id)?;
   Ok(())
 }
 

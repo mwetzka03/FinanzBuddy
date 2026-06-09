@@ -56,6 +56,8 @@ export interface FixedCost {
   dayOfMonth: number | null;
   endChargeDate: IsoDate | null;
   accountId: string;
+  icon: string;
+  color: string;
 }
 
 export interface BuyItem {

@@ -313,6 +313,7 @@ export const en: TranslationDict = {
     namePlaceholder: 'Rent',
     listHint: 'Click the name for booking history. Fixed costs are debited automatically on the due date.',
     historyIntro: 'All past actual bookings assigned to this fixed cost.',
+    removeAssignment: 'Remove assignment',
     historyEmpty: 'No assigned bookings yet.',
     formHint:
       'Recurring fixed costs with cadence and due dates — debits happen automatically on schedule.',
@@ -535,6 +536,14 @@ export const en: TranslationDict = {
   onboarding: {
     title: 'Welcome to FinanzBuddy',
     subtitle: 'Set up the app in a few steps. You can go back at any time.',
+    languageTitle: 'Language',
+    languageHint: 'Choose the app language. You can change it later in settings.',
+    languageEn: 'English',
+    languageDe: 'Deutsch',
+    themeTitle: 'Appearance',
+    themeHint: 'Choose light or dark mode. You can change it later in settings.',
+    themeLight: 'Light',
+    themeDark: 'Dark',
     modeTitle: 'How do you want to start?',
     modeHint: 'Manual: enter balances yourself. Bank import (beta): load a CSV export.',
     manualTitle: 'Manual',
@@ -555,6 +564,8 @@ export const en: TranslationDict = {
     periodHint: 'This choice is permanent. Calendar month or salary periods from primary income.',
     bankFilesTitle: 'Load bank exports',
     bankFilesHint: 'One CSV file is required for the main account. Optional one file per other account.',
+    bankFilesMainOnlyWarning:
+      'Bank import was only tested on the main account. Importing other accounts may cause errors.',
     pickFile: 'Choose file',
     noFile: 'No file',
     bankIncomeTitle: 'Primary income',
@@ -567,6 +578,8 @@ export const en: TranslationDict = {
     bankIncomeForecastAmount: 'Forecast amount (EUR)',
     bankIncomeForecastAmountHint: 'Applies to future forecast dates. Import bookings stay unchanged.',
     bankIncomeFirstSalary: 'First salary booking: {{date}} — opening balance on {{balanceDate}}',
+    bankIncomeFirstSalaryCalendar:
+      'First primary income: {{date}} — dashboard opening balance on {{balanceDate}}',
     bankIncomeDueRule: 'Due date (monthly)',
     bankIncomeDayOfMonth: 'Calendar day',
     bankIncomeOptional:

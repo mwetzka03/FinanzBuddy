@@ -120,43 +120,19 @@ struct ParsedStatement {
 fn try_match_fixed_cost_id(
   conn: &rusqlite::Connection,
   account_id: &str,
-  amount_cents: i64,
   date: &str,
+  title: &str,
+  notes: Option<&str>,
+  counterparty_iban: Option<&str>,
 ) -> AppResult<Option<String>> {
-  if amount_cents >= 0 {
-    return Ok(None);
-  }
-  let abs_amount = amount_cents.abs();
-  let mut stmt = conn.prepare(
-    "SELECT id, cadence FROM fixed_costs WHERE active = 1 AND account_id = ?1 AND amount_cents = ?2",
-  )?;
-  let rows = stmt
-    .query_map(params![account_id, abs_amount], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-    .collect::<Result<Vec<_>, _>>()?;
-  for (id, cadence) in rows {
-    if cadence == "monthly" || cadence == "yearly" || cadence == "once" {
-      let month = if date.len() >= 7 { &date[..7] } else { date };
-      let booked: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM ledger_transactions WHERE fixed_cost_id = ?1 AND kind = 'expense' AND substr(date,1,7) = ?2",
-        params![id, month],
-        |r| r.get(0),
-      )?;
-      if booked > 0 {
-        continue;
-      }
-    } else {
-      let booked: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM ledger_transactions WHERE fixed_cost_id = ?1 AND kind = 'expense' AND date = ?2",
-        params![id, date],
-        |r| r.get(0),
-      )?;
-      if booked > 0 {
-        continue;
-      }
-    }
-    return Ok(Some(id));
-  }
-  Ok(None)
+  crate::cost_assignment::try_match_fixed_cost_id(
+    conn,
+    account_id,
+    date,
+    title,
+    notes,
+    counterparty_iban,
+  )
 }
 
 fn try_match_income_forecast(
@@ -876,22 +852,36 @@ fn import_bank_export_inner(
     } else {
       "expense"
     };
-    let icon = if kind == "income" {
-      "banknote"
+    let mut icon = if kind == "income" {
+      "banknote".to_string()
     } else {
-      "shop"
+      "shop".to_string()
     };
-    let color = if kind == "income" {
-      "#22c55e"
+    let mut color = if kind == "income" {
+      "#22c55e".to_string()
     } else {
-      "#ef4444"
+      "#ef4444".to_string()
     };
 
     let fixed_cost_id = if kind == "expense" {
-      try_match_fixed_cost_id(&conn, &target_account_id, tx.amount_cents, &tx.date)?
+      try_match_fixed_cost_id(
+        &conn,
+        &target_account_id,
+        &tx.date,
+        &tx.title,
+        tx.notes.as_deref(),
+        tx.counterparty_iban.as_deref(),
+      )?
     } else {
       None
     };
+
+    if let Some(ref fc_id) = fixed_cost_id {
+      if let Ok((fc_icon, fc_color)) = crate::cost_assignment::fixed_cost_style(&conn, fc_id) {
+        icon = fc_icon;
+        color = fc_color;
+      }
+    }
 
     let id = Uuid::new_v4().to_string();
     let created_at = (base_time + Duration::milliseconds(100 + index as i64)).to_rfc3339();

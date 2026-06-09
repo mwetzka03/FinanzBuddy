@@ -1,14 +1,11 @@
 import {
   Activity,
   Apple,
-  Award,
   Banknote,
   Bell,
   Bike,
   BookOpen,
-  Brain,
   Briefcase,
-  Brush,
   Calendar,
   Camera,
   Car,
@@ -16,11 +13,7 @@ import {
   Cloud,
   Code2,
   Coffee,
-  Coins,
-  Crown,
   Dumbbell,
-  Flame,
-  Flower2,
   Gamepad2,
   Gift,
   GraduationCap,
@@ -30,7 +23,6 @@ import {
   Leaf,
   Lightbulb,
   ListChecks,
-  Medal,
   Moon,
   Music,
   Palette,
@@ -40,80 +32,69 @@ import {
   Pill,
   Plane,
   Repeat,
-  Rocket,
-  Scissors,
   ShoppingBag,
-  Smile,
-  Sparkles,
-  Star,
   Store,
   Sun,
   Target,
-  TreePine,
   TrendingUp,
   Trophy,
-  Users,
   Utensils,
-  Wallet,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
+import { BeerIcon, CigaretteIcon, TentIcon } from './customIcons';
 
 export const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
-  { name: 'target', icon: Target },
-  { name: 'flame', icon: Flame },
+  // Health & fitness
   { name: 'dumbbell', icon: Dumbbell },
   { name: 'heart', icon: Heart },
-  { name: 'brain', icon: Brain },
   { name: 'apple', icon: Apple },
+  { name: 'activity', icon: Activity },
+  { name: 'pill', icon: Pill },
+  // Food & drink
+  { name: 'utensils', icon: Utensils },
+  { name: 'coffee', icon: Coffee },
+  { name: 'beer', icon: BeerIcon },
+  { name: 'cigarette', icon: CigaretteIcon },
+  // Home & shopping
+  { name: 'home', icon: Home },
+  { name: 'shop', icon: ShoppingBag },
+  { name: 'store', icon: Store },
+  // Transport
+  { name: 'car', icon: Car },
+  { name: 'plane', icon: Plane },
+  { name: 'bike', icon: Bike },
+  { name: 'tent', icon: TentIcon },
+  // Nature & weather
   { name: 'leaf', icon: Leaf },
   { name: 'sun', icon: Sun },
   { name: 'moon', icon: Moon },
   { name: 'cloud', icon: Cloud },
-  { name: 'code', icon: Code2 },
-  { name: 'cleaning', icon: Brush },
-  { name: 'coffee', icon: Coffee },
-  { name: 'book', icon: BookOpen },
-  { name: 'briefcase', icon: Briefcase },
-  { name: 'home', icon: Home },
-  { name: 'activity', icon: Activity },
-  { name: 'pill', icon: Pill },
-  { name: 'utensils', icon: Utensils },
-  { name: 'camera', icon: Camera },
-  { name: 'music', icon: Music },
-  { name: 'palette', icon: Palette },
-  { name: 'gamepad', icon: Gamepad2 },
-  { name: 'gift', icon: Gift },
-  { name: 'trophy', icon: Trophy },
-  { name: 'award', icon: Award },
-  { name: 'medal', icon: Medal },
-  { name: 'crown', icon: Crown },
-  { name: 'star', icon: Star },
-  { name: 'sparkles', icon: Sparkles },
-  { name: 'party', icon: PartyPopper },
-  { name: 'smile', icon: Smile },
-  { name: 'zap', icon: Zap },
-  { name: 'calendar', icon: Calendar },
-  { name: 'bell', icon: Bell },
-  { name: 'wallet', icon: Wallet },
+  // Finance
   { name: 'banknote', icon: Banknote },
   { name: 'landmark', icon: Landmark },
-  { name: 'coins', icon: Coins },
   { name: 'piggybank', icon: PiggyBank },
   { name: 'trending', icon: TrendingUp },
-  { name: 'shop', icon: ShoppingBag },
-  { name: 'store', icon: Store },
-  { name: 'car', icon: Car },
-  { name: 'plane', icon: Plane },
-  { name: 'bike', icon: Bike },
-  { name: 'users', icon: Users },
-  { name: 'flower', icon: Flower2 },
-  { name: 'tree', icon: TreePine },
+  { name: 'calendar', icon: Calendar },
+  // Work & education
+  { name: 'briefcase', icon: Briefcase },
   { name: 'graduation', icon: GraduationCap },
+  { name: 'code', icon: Code2 },
   { name: 'lightbulb', icon: Lightbulb },
-  { name: 'rocket', icon: Rocket },
   { name: 'phone', icon: Phone },
-  { name: 'scissors', icon: Scissors },
+  // Leisure
+  { name: 'gamepad', icon: Gamepad2 },
+  { name: 'music', icon: Music },
+  { name: 'camera', icon: Camera },
+  { name: 'palette', icon: Palette },
+  { name: 'book', icon: BookOpen },
+  { name: 'gift', icon: Gift },
+  { name: 'trophy', icon: Trophy },
+  { name: 'party', icon: PartyPopper },
+  { name: 'target', icon: Target },
+  // Utilities
+  { name: 'bell', icon: Bell },
+  { name: 'zap', icon: Zap },
   { name: 'check', icon: CheckCircle2 },
   { name: 'repeat', icon: Repeat },
   { name: 'list', icon: ListChecks },
@@ -121,8 +102,34 @@ export const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
 
 const iconMap = Object.fromEntries(ICON_OPTIONS.map((o) => [o.name, o.icon]));
 
+/** Icons removed from the picker; map to a sensible replacement when loading stored data. */
+export const DEPRECATED_ICON_ALIASES: Record<string, string> = {
+  flame: 'zap',
+  brain: 'lightbulb',
+  cleaning: 'home',
+  award: 'trophy',
+  medal: 'trophy',
+  crown: 'trophy',
+  star: 'target',
+  sparkles: 'party',
+  smile: 'party',
+  wallet: 'repeat',
+  coins: 'banknote',
+  users: 'target',
+  flower: 'leaf',
+  tree: 'leaf',
+  rocket: 'target',
+  scissors: 'target',
+};
+
+export function resolveIconName(name: string | null | undefined): string {
+  if (!name) return 'target';
+  if (iconMap[name]) return name;
+  return DEPRECATED_ICON_ALIASES[name] ?? 'target';
+}
+
 export function getIcon(name: string): LucideIcon {
-  return iconMap[name] ?? Target;
+  return iconMap[resolveIconName(name)] ?? Target;
 }
 
 export const COLOR_OPTIONS = [
@@ -167,7 +174,7 @@ export const COLOR_OPTIONS = [
 export const DEFAULT_KIND_ICON: Record<string, string> = {
   income: 'banknote',
   expense: 'shop',
-  transfer: 'wallet',
+  transfer: 'repeat',
   fixed_cost: 'calendar',
   buy_apply: 'shop',
   buy_planned: 'shop',

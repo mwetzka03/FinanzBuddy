@@ -58,6 +58,17 @@ export function accountsRequiringOpeningBalance(accounts: Account[]): Account[] 
   return accounts.filter((a) => !isOberspartopf(a));
 }
 
+/** Hauptkonto, dann übrige Girokonten, dann Spartöpfe — jeweils alphabetisch. */
+export function sortOpeningBalanceAccounts(accounts: Account[], mainAccountId?: string | null): Account[] {
+  const targets = accountsRequiringOpeningBalance(accounts);
+  const main = mainAccountId ? targets.find((a) => a.id === mainAccountId) : undefined;
+  const rest = targets.filter((a) => a.id !== mainAccountId);
+  const sortByName = (a: Account, b: Account) => a.name.localeCompare(b.name, 'de');
+  const giro = rest.filter((a) => !isSpartopf(a)).sort(sortByName);
+  const pots = rest.filter((a) => isSpartopf(a)).sort(sortByName);
+  return [...(main ? [main] : []), ...giro, ...pots];
+}
+
 export function isSpartopf(account: Pick<Account, 'accountKind' | 'balanceSource'>): boolean {
   return effectiveAccountKind(account) === 'spartopf';
 }

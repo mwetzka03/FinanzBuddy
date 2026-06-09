@@ -1,4 +1,4 @@
-use super::helpers::{to_cmd_result, CmdResult};
+use super::helpers::{normalize_color, normalize_icon, to_cmd_result, CmdResult};
 use crate::accounts::get_main_account_id;
 use crate::error::{AppError, AppResult};
 use crate::logic::generate_occurrences_with_due_rule_rp;
@@ -18,7 +18,7 @@ pub fn list_fixed_costs(state: State<'_, AppState>) -> CmdResult<Vec<FixedCost>>
 fn list_fixed_costs_inner(state: State<'_, AppState>) -> AppResult<Vec<FixedCost>> {
   let conn = state.conn.lock().unwrap();
   let mut stmt = conn.prepare(
-    "SELECT id, name, amount_cents, cadence, first_charge_date, active, notes, COALESCE(due_rule,'calendar_day'), day_of_month, end_charge_date, COALESCE(account_id, '') FROM fixed_costs ORDER BY name ASC",
+    "SELECT id, name, amount_cents, cadence, first_charge_date, active, notes, COALESCE(due_rule,'calendar_day'), day_of_month, end_charge_date, COALESCE(account_id, ''), COALESCE(icon, 'calendar'), COALESCE(color, '#6366f1') FROM fixed_costs ORDER BY name ASC",
   )?;
   let main_id = get_main_account_id(&conn)?;
   let rows = stmt
@@ -40,6 +40,8 @@ fn list_fixed_costs_inner(state: State<'_, AppState>) -> AppResult<Vec<FixedCost
         } else {
           account_id
         },
+        icon: r.get(11)?,
+        color: r.get(12)?,
       })
     })?
     .collect::<Result<Vec<_>, _>>()?;
@@ -59,6 +61,8 @@ pub struct CreateFixedCostInput {
   pub day_of_month: Option<i64>,
   pub end_charge_date: Option<String>,
   pub account_id: Option<String>,
+  pub icon: Option<String>,
+  pub color: Option<String>,
 }
 
 #[tauri::command]
@@ -99,8 +103,10 @@ fn create_fixed_cost_inner(state: State<'_, AppState>, input: CreateFixedCostInp
     Some(id) => id.to_string(),
     None => get_main_account_id(&conn)?,
   };
+  let icon = normalize_icon(input.icon, "calendar");
+  let color = normalize_color(input.color, "#6366f1");
   conn.execute(
-    "INSERT INTO fixed_costs (id, name, amount_cents, cadence, first_charge_date, active, notes, due_rule, day_of_month, end_charge_date, account_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+    "INSERT INTO fixed_costs (id, name, amount_cents, cadence, first_charge_date, active, notes, due_rule, day_of_month, end_charge_date, account_id, icon, color) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
     params![
       id,
       input.name,
@@ -113,6 +119,8 @@ fn create_fixed_cost_inner(state: State<'_, AppState>, input: CreateFixedCostInp
       day_of_month,
       input.end_charge_date.filter(|s| !s.is_empty()),
       account_id,
+      icon,
+      color,
     ],
   )?;
   Ok(())
@@ -143,6 +151,8 @@ pub struct UpdateFixedCostInput {
   pub day_of_month: Option<i64>,
   pub end_charge_date: Option<String>,
   pub account_id: String,
+  pub icon: Option<String>,
+  pub color: Option<String>,
 }
 
 #[tauri::command]
@@ -170,8 +180,10 @@ fn update_fixed_cost_inner(state: State<'_, AppState>, input: UpdateFixedCostInp
     }
   });
   let conn = state.conn.lock().unwrap();
+  let icon = normalize_icon(input.icon, "calendar");
+  let color = normalize_color(input.color, "#6366f1");
   conn.execute(
-    "UPDATE fixed_costs SET name=?2, amount_cents=?3, cadence=?4, first_charge_date=?5, active=?6, notes=?7, due_rule=?8, day_of_month=?9, end_charge_date=?10, account_id=?11 WHERE id=?1",
+    "UPDATE fixed_costs SET name=?2, amount_cents=?3, cadence=?4, first_charge_date=?5, active=?6, notes=?7, due_rule=?8, day_of_month=?9, end_charge_date=?10, account_id=?11, icon=?12, color=?13 WHERE id=?1",
     params![
       input.id,
       input.name,
@@ -184,9 +196,22 @@ fn update_fixed_cost_inner(state: State<'_, AppState>, input: UpdateFixedCostInp
       day_of_month,
       input.end_charge_date.filter(|s| !s.is_empty()),
       input.account_id,
+      icon,
+      color,
     ],
   )?;
+  crate::cost_assignment::sync_ledger_style_for_fixed_cost(&conn, &input.id)?;
   Ok(())
+}
+
+#[tauri::command]
+pub fn unassign_fixed_cost_transaction(state: State<'_, AppState>, ledger_id: String) -> CmdResult<()> {
+  to_cmd_result(unassign_fixed_cost_transaction_inner(state, ledger_id))
+}
+
+fn unassign_fixed_cost_transaction_inner(state: State<'_, AppState>, ledger_id: String) -> AppResult<()> {
+  let conn = state.conn.lock().unwrap();
+  crate::cost_assignment::clear_fixed_cost_from_transaction(&conn, &ledger_id)
 }
 
 #[tauri::command]

@@ -53,6 +53,7 @@ fn main() {
       commands::fixed_costs::list_fixed_costs,
       commands::fixed_costs::create_fixed_cost,
       commands::fixed_costs::update_fixed_cost,
+      commands::fixed_costs::unassign_fixed_cost_transaction,
       commands::fixed_costs::delete_fixed_cost,
       commands::fixed_costs::preview_fixed_cost,
       commands::buy_items::list_buy_items,
