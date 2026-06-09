@@ -257,11 +257,12 @@ fn matching_fixed_cost_expense_ids(
     |r| r.get(0),
   )?;
   let Some(ref iban) = anchor.iban else {
-    return Ok(vec![(anchor.id.clone(), anchor.date.clone())]);
+    return Ok(vec![]);
   };
   let mut out = Vec::new();
   let mut stmt = conn.prepare(
-    "SELECT id, date, title, notes FROM ledger_transactions
+    "SELECT id, date, title, notes, fixed_cost_id, variable_cost_id, buy_item_id
+     FROM ledger_transactions
      WHERE kind = 'expense' AND account_id = ?1",
   )?;
   let rows = stmt.query_map(params![anchor.account_id], |r| {
@@ -270,19 +271,25 @@ fn matching_fixed_cost_expense_ids(
       r.get::<_, String>(1)?,
       r.get::<_, String>(2)?,
       r.get::<_, Option<String>>(3)?,
+      r.get::<_, Option<String>>(4)?,
+      r.get::<_, Option<String>>(5)?,
+      r.get::<_, Option<String>>(6)?,
     ))
   })?;
   for row in rows {
-    let (id, date, title, notes) = row?;
+    let (id, date, title, notes, fixed_cost_id, variable_cost_id, buy_item_id) = row?;
+    if id == anchor.id {
+      continue;
+    }
     if !ledger_tx_is_categorizable(conn, &id)? {
+      continue;
+    }
+    if fixed_cost_id.is_some() || variable_cost_id.is_some() || buy_item_id.is_some() {
       continue;
     }
     if fixed_cost_matches_transaction(&fc_name, &title, notes.as_deref(), Some(iban.as_str())) {
       out.push((id, date));
     }
-  }
-  if out.is_empty() {
-    out.push((anchor.id.clone(), anchor.date.clone()));
   }
   Ok(out)
 }
@@ -307,13 +314,14 @@ pub fn clear_fixed_cost_from_transaction(conn: &Connection, ledger_id: &str) -> 
   Ok(())
 }
 
-/// Weist die Kategorie der Anker-Buchung zu. Fixkosten: IBAN + Wort im Verwendungszweck.
+/// Weist die Kategorie der Anker-Buchung zu. Fixkosten: optional IBAN + Wort im Verwendungszweck.
 /// Variable Kosten: nur die gewählte Buchung (keine automatische Mehrfachzuordnung).
 pub fn apply_expense_category_assignment(
   conn: &Connection,
   anchor_id: &str,
   variable_cost_id: Option<&str>,
   fixed_cost_id: Option<&str>,
+  assign_similar_fixed_cost: bool,
 ) -> AppResult<()> {
   if let Some(vc_id) = variable_cost_id {
     validate_variable_cost_id(conn, vc_id)?;
@@ -326,7 +334,15 @@ pub fn apply_expense_category_assignment(
   let targets = if variable_cost_id.is_some() {
     vec![(anchor.id.clone(), anchor.date.clone())]
   } else if let Some(fc_id) = fixed_cost_id {
-    matching_fixed_cost_expense_ids(conn, &anchor, fc_id)?
+    let mut targets = if assign_similar_fixed_cost {
+      matching_fixed_cost_expense_ids(conn, &anchor, fc_id)?
+    } else {
+      Vec::new()
+    };
+    if !targets.iter().any(|(id, _)| id == &anchor.id) {
+      targets.insert(0, (anchor.id.clone(), anchor.date.clone()));
+    }
+    targets
   } else {
     vec![(anchor.id.clone(), anchor.date.clone())]
   };
@@ -467,7 +483,7 @@ mod tests {
         .unwrap();
     }
 
-    apply_expense_category_assignment(&conn, "tx1", Some("vc1"), None).unwrap();
+    apply_expense_category_assignment(&conn, "tx1", Some("vc1"), None, false).unwrap();
 
     let linked: i64 = conn
       .query_row(
@@ -500,7 +516,7 @@ mod tests {
         .unwrap();
     }
 
-    apply_expense_category_assignment(&conn, "tx1", None, Some("fc1")).unwrap();
+    apply_expense_category_assignment(&conn, "tx1", None, Some("fc1"), false).unwrap();
 
     let fc1: Option<String> = conn
       .query_row(
@@ -534,5 +550,93 @@ mod tests {
       Some("Buchungstext: Spotify IBAN: DE12345678901234567890"),
       Some("DE12345678901234567890"),
     ));
+  }
+
+  #[test]
+  fn similar_fixed_cost_assignment_skips_already_linked() {
+    let conn = test_conn();
+    seed_account(&conn, "acc1");
+    let iban = "LU89751000135104200E";
+    let notes = format!("Apple Services IBAN: {iban}");
+    for (fc_id, fc_name) in [("fc_music", "Apple Music"), ("fc_icloud", "Apple iCloud")] {
+      conn
+        .execute(
+          "INSERT INTO fixed_costs (id, name, amount_cents, cadence, first_charge_date, active, account_id, due_rule)
+           VALUES (?1, ?2, 999, 'monthly', '2026-01-01', 1, 'acc1', 'calendar_day')",
+          params![fc_id, fc_name],
+        )
+        .unwrap();
+    }
+    for (id, date) in [("tx_music", "2026-06-03"), ("tx_icloud", "2026-06-10")] {
+      conn
+        .execute(
+          "INSERT INTO ledger_transactions (id, date, amount_cents, account_id, kind, title, notes, created_at)
+           VALUES (?1, ?2, -999, 'acc1', 'expense', 'Apple', ?3, datetime('now'))",
+          params![id, date, notes],
+        )
+        .unwrap();
+    }
+
+    apply_expense_category_assignment(&conn, "tx_music", None, Some("fc_music"), true).unwrap();
+    apply_expense_category_assignment(&conn, "tx_icloud", None, Some("fc_icloud"), true).unwrap();
+
+    let music_fc: Option<String> = conn
+      .query_row(
+        "SELECT fixed_cost_id FROM ledger_transactions WHERE id = 'tx_music'",
+        [],
+        |r| r.get(0),
+      )
+      .unwrap();
+    let icloud_fc: Option<String> = conn
+      .query_row(
+        "SELECT fixed_cost_id FROM ledger_transactions WHERE id = 'tx_icloud'",
+        [],
+        |r| r.get(0),
+      )
+      .unwrap();
+    assert_eq!(music_fc.as_deref(), Some("fc_music"));
+    assert_eq!(icloud_fc.as_deref(), Some("fc_icloud"));
+  }
+
+  #[test]
+  fn single_fixed_cost_assignment_only_updates_anchor() {
+    let conn = test_conn();
+    seed_account(&conn, "acc1");
+    conn
+      .execute(
+        "INSERT INTO fixed_costs (id, name, amount_cents, cadence, first_charge_date, active, account_id, due_rule)
+         VALUES ('fc1', 'Apple Music', 999, 'monthly', '2026-01-01', 1, 'acc1', 'calendar_day')",
+        [],
+      )
+      .unwrap();
+    let notes = "Apple Services IBAN: LU89751000135104200E";
+    for (id, date) in [("tx1", "2026-06-03"), ("tx2", "2026-06-10")] {
+      conn
+        .execute(
+          "INSERT INTO ledger_transactions (id, date, amount_cents, account_id, kind, title, notes, created_at)
+           VALUES (?1, ?2, -999, 'acc1', 'expense', 'Apple', ?3, datetime('now'))",
+          params![id, date, notes],
+        )
+        .unwrap();
+    }
+
+    apply_expense_category_assignment(&conn, "tx1", None, Some("fc1"), false).unwrap();
+
+    let fc1: Option<String> = conn
+      .query_row(
+        "SELECT fixed_cost_id FROM ledger_transactions WHERE id = 'tx1'",
+        [],
+        |r| r.get(0),
+      )
+      .unwrap();
+    let fc2: Option<String> = conn
+      .query_row(
+        "SELECT fixed_cost_id FROM ledger_transactions WHERE id = 'tx2'",
+        [],
+        |r| r.get(0),
+      )
+      .unwrap();
+    assert_eq!(fc1.as_deref(), Some("fc1"));
+    assert!(fc2.is_none());
   }
 }

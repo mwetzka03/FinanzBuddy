@@ -115,6 +115,7 @@ export function TransactionEntryModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategoryValue>({ kind: 'none', id: null });
+  const [assignSimilarFixedCost, setAssignSimilarFixedCost] = useState(false);
   const [icon, setIcon] = useState(DEFAULT_KIND_ICON.expense);
   const [color, setColor] = useState(DEFAULT_KIND_COLOR.expense);
 
@@ -178,6 +179,7 @@ export function TransactionEntryModal({
     setTitle('');
     setDescription('');
     setExpenseCategory({ kind: 'none', id: null });
+    setAssignSimilarFixedCost(false);
     setIcon(DEFAULT_KIND_ICON.expense);
     setColor(DEFAULT_KIND_COLOR.expense);
     setFromAccountId(accountId || mainAccountId);
@@ -204,6 +206,13 @@ export function TransactionEntryModal({
       .then(setLinkOccurrences)
       .catch(() => setLinkOccurrences([]));
   }, [open, linkForecastId]);
+
+  function fixedCostAssignmentOptions() {
+    if (expenseCategory.kind !== 'fixed' || !expenseCategory.id) {
+      return {};
+    }
+    return { assignSimilarFixedCost };
+  }
 
   function onEntryTypeChange(next: CreateEntryType | EditEntryType) {
     setEntryType(next);
@@ -328,6 +337,7 @@ export function TransactionEntryModal({
             title: title.trim() || kindLabel(finalKind, t),
             notes: description.trim() ? description : null,
             ...ledgerCategoryIds(canAssignCategory(finalKind) ? expenseCategory : { kind: 'none', id: null }),
+            ...fixedCostAssignmentOptions(),
             icon,
             color,
           });
@@ -388,6 +398,7 @@ export function TransactionEntryModal({
           title: title.trim() ? title : kindLabel(entryType, t),
           notes: description.trim() ? description : null,
           ...ledgerCategoryIds(canAssignCategory(entryType) ? expenseCategory : { kind: 'none', id: null }),
+          ...fixedCostAssignmentOptions(),
           icon,
           color,
         });
@@ -704,16 +715,27 @@ export function TransactionEntryModal({
               </label>
             </div>
             {canAssignCategory(entryType as string) ? (
-              <label>
-                {t('common.category')}
-                <ExpenseCategoryField
-                  variableCosts={variableCosts}
-                  fixedCosts={fixedCosts}
-                  buyItems={buyItems}
-                  value={expenseCategory}
-                  onChange={setExpenseCategory}
-                />
-              </label>
+              <div className="fh-form-row fh-form-row--category">
+                <label className="fh-form-row-grow">
+                  {t('common.category')}
+                  <ExpenseCategoryField
+                    variableCosts={variableCosts}
+                    fixedCosts={fixedCosts}
+                    buyItems={buyItems}
+                    value={expenseCategory}
+                    onChange={setExpenseCategory}
+                  />
+                </label>
+                {expenseCategory.kind === 'fixed' && expenseCategory.id ? (
+                  <Checkbox
+                    checked={assignSimilarFixedCost}
+                    onChange={setAssignSimilarFixedCost}
+                    title={t('transactions.assignSimilarFixedCostsHint')}
+                  >
+                    {t('transactions.assignSimilarFixedCosts')}
+                  </Checkbox>
+                ) : null}
+              </div>
             ) : null}
             {showIncomeForecastLink ? (
               <>

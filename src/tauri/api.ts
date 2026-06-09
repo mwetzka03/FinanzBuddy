@@ -123,6 +123,7 @@ export async function createLedgerTransaction(input: {
   buyItemId?: string | null;
   icon?: string;
   color?: string;
+  assignSimilarFixedCost?: boolean;
 }): Promise<void> {
   await invoke('create_ledger_transaction', { input });
 }
@@ -139,6 +140,7 @@ export async function updateLedgerTransaction(input: {
   buyItemId?: string | null;
   icon?: string;
   color?: string;
+  assignSimilarFixedCost?: boolean;
 }): Promise<void> {
   await invoke('update_ledger_transaction', { input });
 }

@@ -252,6 +252,8 @@ export const en: TranslationDict = {
     categoryVariable: 'Variable costs',
     categoryFixed: 'Fixed costs',
     categoryBuy: 'Buy list',
+    assignSimilarFixedCosts: 'Assign all similar',
+    assignSimilarFixedCostsHint: 'Same account, IBAN and matching name word',
     undoTransfer: 'Undo transfer',
     filterType: 'Filter by type',
     filterAll: 'All types',

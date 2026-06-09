@@ -250,6 +250,8 @@ export const de = {
     categoryVariable: 'Variable Kosten',
     categoryFixed: 'Fixkosten',
     categoryBuy: 'Einkaufszettel',
+    assignSimilarFixedCosts: 'Alle ähnlichen zuordnen',
+    assignSimilarFixedCostsHint: 'Gleiches Konto, IBAN und passendes Namenswort',
     undoTransfer: 'Transfer rückgängig',
     filterType: 'Typ filtern',
     filterAll: 'Alle Typen',

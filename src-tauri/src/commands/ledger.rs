@@ -31,6 +31,7 @@ pub struct CreateLedgerTransactionInput {
   pub buy_item_id: Option<String>,
   pub icon: Option<String>,
   pub color: Option<String>,
+  pub assign_similar_fixed_cost: Option<bool>,
 }
 
 #[tauri::command]
@@ -165,6 +166,7 @@ fn create_ledger_transaction_inner(state: State<'_, AppState>, input: CreateLedg
         &id,
         variable_cost_id.as_deref(),
         fixed_cost_id.as_deref(),
+        input.assign_similar_fixed_cost.unwrap_or(false),
       )?;
     }
     apply_buy_item_assignment(&conn, &id, buy_item_id.as_deref())?;
@@ -188,6 +190,7 @@ pub struct UpdateLedgerTransactionInput {
   pub buy_item_id: Option<String>,
   pub icon: Option<String>,
   pub color: Option<String>,
+  pub assign_similar_fixed_cost: Option<bool>,
 }
 
 #[tauri::command]
@@ -258,6 +261,7 @@ fn update_ledger_transaction_inner(state: State<'_, AppState>, input: UpdateLedg
         &input.id,
         variable_cost_id.as_deref(),
         fixed_cost_id.as_deref(),
+        input.assign_similar_fixed_cost.unwrap_or(false),
       )?;
     } else {
       conn.execute(
