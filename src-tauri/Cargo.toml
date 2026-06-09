@@ -1,6 +1,6 @@
 [package]
 name = "finanzbuddy"
-version = "0.2.6"
+version = "0.2.7"
 description = "FinanzBuddy"
 authors = ["you"]
 edition = "2021"
