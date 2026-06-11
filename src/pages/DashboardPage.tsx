@@ -870,12 +870,22 @@ export function DashboardPage() {
               ) : (
                 <div />
               )}
-              <DashboardCard
-                title={t('dashboard.cards.startBalance')}
-                value={formatBalanceEurFromCents(startBalanceCents)}
-                valueColor={startBalanceCents < 0 ? ui.colors.amountNegative : undefined}
-                info={t('dashboard.info.startBalance')}
-              />
+              {showForecastExpenseCards ? (
+                <DashboardCard
+                  title={t('dashboard.cards.buys')}
+                  value={formatExpenseEurFromCents(data.appliedBuysCents)}
+                  info={t('dashboard.info.buys')}
+                  active={eventFilter === 'buy'}
+                  onClick={() => toggleEventFilter('buy')}
+                  inlineDelta={
+                    prevBuysDelta != null
+                      ? { cents: prevBuysDelta, tooltip: t('dashboard.info.buysDeltaPrev'), invertColors: true }
+                      : undefined
+                  }
+                />
+              ) : (
+                <div />
+              )}
               <DashboardCard
                 title={incomeCardTitle}
                 value={formatIncomeEurFromCents(comparison.incomeCents)}
@@ -930,27 +940,17 @@ export function DashboardPage() {
 
             <div style={cardRow3}>
               <DashboardCard
+                title={t('dashboard.cards.startBalance')}
+                value={formatBalanceEurFromCents(startBalanceCents)}
+                valueColor={startBalanceCents < 0 ? ui.colors.amountNegative : undefined}
+                info={t('dashboard.info.startBalance')}
+              />
+              <DashboardCard
                 title={t('dashboard.cards.endBalance')}
                 value={formatBalanceEurFromCents(endBalanceCents)}
                 valueColor={endBalanceCents < 0 ? ui.colors.amountNegative : undefined}
                 info={t('dashboard.info.endBalance')}
               />
-              {showForecastExpenseCards ? (
-                <DashboardCard
-                  title={t('dashboard.cards.buys')}
-                  value={formatExpenseEurFromCents(data.appliedBuysCents)}
-                  info={t('dashboard.info.buys')}
-                  active={eventFilter === 'buy'}
-                  onClick={() => toggleEventFilter('buy')}
-                  inlineDelta={
-                    prevBuysDelta != null
-                      ? { cents: prevBuysDelta, tooltip: t('dashboard.info.buysDeltaPrev'), invertColors: true }
-                      : undefined
-                  }
-                />
-              ) : (
-                <div />
-              )}
               <DashboardCard
                 title={t('dashboard.cards.net')}
                 value={formatSignedEurFromCents(comparison.netCents)}

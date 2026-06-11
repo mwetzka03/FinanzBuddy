@@ -411,6 +411,8 @@ body {
 
 .fh-topbar {
   --fh-logo-size: clamp(2.75rem, 7vmin, 3.5rem);
+  display: flex;
+  flex-direction: column;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -427,6 +429,8 @@ body {
   gap: clamp(0.5rem, 1.5vw, 1rem);
   padding: 0.35rem clamp(1rem, 3vw, 1.75rem) 0.65rem;
   flex-wrap: wrap;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .fh-topbar__brand {
@@ -593,6 +597,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   flex-wrap: wrap;
   gap: 0.35rem;
   padding: 0.35rem clamp(1rem, 3vw, 1.75rem) 0.65rem;
@@ -601,6 +606,7 @@ body {
   backdrop-filter: blur(24px) saturate(160%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
   animation: fh-subnav-in 0.18s ease;
+  box-sizing: border-box;
 }
 
 .fh-topbar__subnav a {
