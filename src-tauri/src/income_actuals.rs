@@ -162,9 +162,9 @@ pub fn get_income_forecast_detail(state: State<'_, AppState>, id: String) -> Cmd
 
 fn get_income_forecast_detail_inner(state: State<'_, AppState>, id: String) -> AppResult<crate::models::IncomeForecastDetail> {
   let conn = state.conn.lock().unwrap();
-  let row: (String, i64, String, String, String, Option<i64>, Option<String>, i64) = conn
+  let row: (String, i64, String, String, String, Option<i64>, Option<String>, i64, String, String) = conn
     .query_row(
-      "SELECT name, amount_cents, cadence, first_charge_date, COALESCE(due_rule,'calendar_day'), day_of_month, end_charge_date, COALESCE(active,1) FROM income_forecasts WHERE id = ?1",
+      "SELECT name, amount_cents, cadence, first_charge_date, COALESCE(due_rule,'calendar_day'), day_of_month, end_charge_date, COALESCE(active,1), COALESCE(icon, 'banknote'), COALESCE(color, '#10b981') FROM income_forecasts WHERE id = ?1",
       params![id],
       |r| {
         Ok((
@@ -176,6 +176,8 @@ fn get_income_forecast_detail_inner(state: State<'_, AppState>, id: String) -> A
           r.get(5)?,
           r.get(6)?,
           r.get(7)?,
+          r.get(8)?,
+          r.get(9)?,
         ))
       },
     )
@@ -211,6 +213,8 @@ fn get_income_forecast_detail_inner(state: State<'_, AppState>, id: String) -> A
           |r| r.get(0),
         )
         .unwrap_or_else(|_| get_main_account_id(&conn).unwrap_or_default()),
+      icon: row.8,
+      color: row.9,
     },
     actuals,
   })

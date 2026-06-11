@@ -82,7 +82,12 @@ fn create_fixed_cost_inner(state: State<'_, AppState>, input: CreateFixedCostInp
       return Err(AppError::Invalid("endChargeDate must be YYYY-MM-DD".into()));
     }
   }
-  let allowed = ["yearly", "monthly", "weekly", "biweekly", "once"];
+  if input.cadence.as_str() == "once" {
+    return Err(AppError::Invalid(
+      "Einmalige Prognose-Ausgaben bitte als Einkaufszettel oder Ausgabe (Prognose) mit „Einmaliger Eintrag“ anlegen.".into(),
+    ));
+  }
+  let allowed = ["yearly", "monthly", "weekly", "biweekly"];
   if !allowed.contains(&input.cadence.as_str()) {
     return Err(AppError::Invalid("cadence invalid".into()));
   }

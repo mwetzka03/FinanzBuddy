@@ -1,5 +1,5 @@
 use crate::error::{AppError, AppResult};
-use rusqlite::{Connection, OpenFlags, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -187,6 +187,7 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   migrate_income_forecasts_v2(conn)?;
   migrate_income_forecasts_v3(conn)?;
   migrate_income_forecasts_v4(conn)?;
+  migrate_income_forecasts_v5(conn)?;
   try_add_column(conn, "accounts", "balance_source", "TEXT")?;
   try_add_column(conn, "accounts", "account_kind", "TEXT")?;
   try_add_column(conn, "accounts", "parent_account_id", "TEXT")?;
@@ -287,7 +288,7 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   conn.execute("UPDATE ledger_transactions SET icon = 'shop' WHERE icon IS NULL OR icon = '' AND kind IN ('expense', 'buy_apply', 'buy_planned')", [])?;
   conn.execute("UPDATE ledger_transactions SET icon = 'repeat' WHERE icon IS NULL OR icon = '' AND kind = 'transfer'", [])?;
   conn.execute("UPDATE ledger_transactions SET icon = 'calendar' WHERE icon IS NULL OR icon = '' AND kind = 'fixed_cost'", [])?;
-  conn.execute("UPDATE ledger_transactions SET icon = 'target' WHERE icon IS NULL OR icon = ''", [])?;
+  conn.execute("UPDATE ledger_transactions SET icon = 'repeat' WHERE icon IS NULL OR icon = ''", [])?;
   conn.execute("UPDATE ledger_transactions SET color = '#6366f1' WHERE color IS NULL OR color = ''", [])?;
 
   migrate_deprecated_icons(conn)?;
@@ -308,7 +309,103 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   crate::setup::ensure_setup_migrated(conn)?;
   crate::accounts::ensure_timeframe_config_migrated(conn)?;
   crate::dashboard_cache::ensure_schema(conn)?;
+  migrate_depot_linked_ledger(conn)?;
+  migrate_buy_item_groups(conn)?;
+  migrate_buy_item_group_ledger(conn)?;
 
+  Ok(())
+}
+
+fn migrate_buy_item_group_ledger(conn: &Connection) -> AppResult<()> {
+  let done: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM app_settings WHERE key = 'buy_item_group_ledger_v1'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap_or(0);
+  if done > 0 {
+    return Ok(());
+  }
+  try_add_column(conn, "ledger_transactions", "buy_item_group_id", "TEXT")?;
+  conn.execute(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('buy_item_group_ledger_v1', '1')",
+    [],
+  )?;
+  Ok(())
+}
+
+fn migrate_buy_item_groups(conn: &Connection) -> AppResult<()> {
+  let done: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM app_settings WHERE key = 'buy_item_groups_v1'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap_or(0);
+  if done > 0 {
+    return Ok(());
+  }
+  conn.execute(
+    "CREATE TABLE IF NOT EXISTS buy_item_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      planned_month TEXT,
+      icon TEXT NOT NULL DEFAULT 'shop',
+      color TEXT NOT NULL DEFAULT '#ec4899',
+      created_at TEXT NOT NULL
+    )",
+    [],
+  )?;
+  try_add_column(conn, "buy_items", "group_id", "TEXT")?;
+  conn.execute(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('buy_item_groups_v1', '1')",
+    [],
+  )?;
+  Ok(())
+}
+
+fn migrate_depot_linked_ledger(conn: &Connection) -> AppResult<()> {
+  let done: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM app_settings WHERE key = 'depot_linked_ledger_v1'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap_or(0);
+  if done > 0 {
+    return Ok(());
+  }
+  try_add_column(conn, "accounts", "linked_ledger_account_id", "TEXT")?;
+  conn.execute(
+    "UPDATE accounts SET balance_source = 'stock_portfolio', account_kind = 'depot'
+     WHERE account_kind = 'depot' AND COALESCE(balance_source, 'ledger') = 'ledger'",
+    [],
+  )?;
+  let fallback: Option<String> = conn
+    .query_row(
+      "SELECT id FROM accounts
+       WHERE COALESCE(balance_source, 'ledger') = 'ledger'
+         AND COALESCE(account_kind, 'standard') != 'depot'
+       ORDER BY CASE WHEN LOWER(name) LIKE '%traderepublic%' THEN 0 ELSE 1 END, created_at ASC
+       LIMIT 1",
+      [],
+      |r| r.get(0),
+    )
+    .optional()?;
+  if let Some(linked_id) = fallback {
+    conn.execute(
+      "UPDATE accounts SET linked_ledger_account_id = ?1
+       WHERE (balance_source = 'stock_portfolio' OR account_kind = 'depot')
+         AND (linked_ledger_account_id IS NULL OR linked_ledger_account_id = '')",
+      params![linked_id],
+    )?;
+  }
+  conn.execute(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('depot_linked_ledger_v1', '1')",
+    [],
+  )?;
   Ok(())
 }
 
@@ -815,19 +912,21 @@ fn migrate_deprecated_icons(conn: &Connection) -> AppResult<()> {
     ("flame", "zap"),
     ("brain", "lightbulb"),
     ("cleaning", "home"),
-    ("award", "trophy"),
-    ("medal", "trophy"),
-    ("crown", "trophy"),
-    ("star", "target"),
+    ("award", "party"),
+    ("medal", "party"),
+    ("crown", "party"),
+    ("trophy", "party"),
+    ("star", "repeat"),
+    ("target", "repeat"),
     ("sparkles", "party"),
     ("smile", "party"),
     ("wallet", "repeat"),
     ("coins", "banknote"),
-    ("users", "target"),
+    ("users", "repeat"),
     ("flower", "leaf"),
     ("tree", "leaf"),
-    ("rocket", "target"),
-    ("scissors", "target"),
+    ("rocket", "repeat"),
+    ("scissors", "repeat"),
     ("arrow-left-right", "repeat"),
   ];
   for (old, new) in replacements {
@@ -845,6 +944,10 @@ fn migrate_deprecated_icons(conn: &Connection) -> AppResult<()> {
     )?;
     conn.execute(
       "UPDATE ledger_transactions SET icon = ?1 WHERE icon = ?2",
+      rusqlite::params![new, old],
+    )?;
+    conn.execute(
+      "UPDATE income_forecasts SET icon = ?1 WHERE icon = ?2",
       rusqlite::params![new, old],
     )?;
   }
@@ -1018,6 +1121,34 @@ fn migrate_income_forecasts_v4(conn: &Connection) -> AppResult<()> {
   )?;
   conn.execute(
     "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('income_forecasts_v4', '1')",
+    [],
+  )?;
+  Ok(())
+}
+
+fn migrate_income_forecasts_v5(conn: &Connection) -> AppResult<()> {
+  let done: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM app_settings WHERE key = 'income_forecasts_v5'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap_or(0);
+  if done > 0 {
+    return Ok(());
+  }
+  try_add_column(conn, "income_forecasts", "icon", "TEXT")?;
+  try_add_column(conn, "income_forecasts", "color", "TEXT")?;
+  conn.execute(
+    "UPDATE income_forecasts SET icon = 'banknote' WHERE icon IS NULL OR icon = ''",
+    [],
+  )?;
+  conn.execute(
+    "UPDATE income_forecasts SET color = '#10b981' WHERE color IS NULL OR color = ''",
+    [],
+  )?;
+  conn.execute(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('income_forecasts_v5', '1')",
     [],
   )?;
   Ok(())

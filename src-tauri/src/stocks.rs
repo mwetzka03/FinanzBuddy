@@ -1,4 +1,3 @@
-use crate::accounts::get_trade_republic_account_id;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use chrono::Utc;
@@ -216,11 +215,23 @@ fn resolve_depot_account_id(conn: &rusqlite::Connection, input: &Option<String>)
   .map_err(|_| AppError::Invalid("Kein Aktien-Depot-Konto gefunden".into()))
 }
 
-fn resolve_payment_account_id(conn: &rusqlite::Connection, input: &Option<String>) -> AppResult<String> {
+fn resolve_payment_account_id(
+  conn: &rusqlite::Connection,
+  depot_account_id: &str,
+  input: &Option<String>,
+) -> AppResult<String> {
   if let Some(id) = input.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
     return Ok(id.to_string());
   }
-  get_trade_republic_account_id(conn)
+  conn.query_row(
+    "SELECT linked_ledger_account_id FROM accounts WHERE id = ?1",
+    params![depot_account_id],
+    |r| r.get::<_, Option<String>>(0),
+  )
+  .optional()?
+  .flatten()
+  .filter(|s| !s.trim().is_empty())
+  .ok_or_else(|| AppError::Invalid("Depot ohne verknüpftes Girokonto — bitte in den Einstellungen zuweisen.".into()))
 }
 
 fn book_stock_purchase_ledger(
@@ -823,7 +834,7 @@ fn extract_isin(q: &serde_json::Value) -> Option<String> {
 
 fn quote_type_ok(q: &serde_json::Value) -> bool {
   let qt = q.get("quoteType").and_then(|v| v.as_str()).unwrap_or("");
-  matches!(qt, "EQUITY" | "ETF")
+  matches!(qt, "EQUITY" | "ETF" | "CRYPTOCURRENCY")
 }
 
 fn german_listing_score(q: &serde_json::Value) -> i32 {
@@ -1196,11 +1207,11 @@ pub struct CreateStockHoldingInput {
 }
 
 #[tauri::command]
-pub fn create_stock_holding(state: State<'_, AppState>, input: CreateStockHoldingInput) -> CmdResult<()> {
+pub fn create_stock_holding(state: State<'_, AppState>, input: CreateStockHoldingInput) -> CmdResult<String> {
   to_cmd_result(create_stock_holding_inner(state, input))
 }
 
-fn create_stock_holding_inner(state: State<'_, AppState>, input: CreateStockHoldingInput) -> AppResult<()> {
+fn create_stock_holding_inner(state: State<'_, AppState>, input: CreateStockHoldingInput) -> AppResult<String> {
   if input.name.trim().is_empty() {
     return Err(AppError::Invalid("name required".into()));
   }
@@ -1221,7 +1232,7 @@ fn create_stock_holding_inner(state: State<'_, AppState>, input: CreateStockHold
   let payment_account_id = if is_transfer {
     None
   } else {
-    Some(resolve_payment_account_id(&conn, &input.payment_account_id)?)
+    Some(resolve_payment_account_id(&conn, &depot_account_id, &input.payment_account_id)?)
   };
 
   let existing_id: Option<String> = conn
@@ -1260,7 +1271,7 @@ fn create_stock_holding_inner(state: State<'_, AppState>, input: CreateStockHold
     )?;
     drop(conn);
     let _ = crate::portfolio_cache::refresh_now(&state);
-    return Ok(());
+    return Ok(holding_id);
   }
 
   let id = Uuid::new_v4().to_string();
@@ -1292,7 +1303,7 @@ fn create_stock_holding_inner(state: State<'_, AppState>, input: CreateStockHold
   }
   drop(conn);
   let _ = crate::portfolio_cache::refresh_now(&state);
-  Ok(())
+  Ok(id)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1354,6 +1365,227 @@ fn delete_stock_holding_inner(state: State<'_, AppState>, id: String) -> AppResu
   conn.execute("DELETE FROM stock_lots WHERE holding_id = ?1", params![id])?;
   conn.execute("DELETE FROM stock_holdings WHERE id = ?1", params![id])?;
   Ok(())
+}
+
+fn update_lot_ledger(
+  conn: &rusqlite::Connection,
+  lot_id: &str,
+  buy_date: &str,
+  buy_price_cents: i64,
+  shares: f64,
+  stock_name: &str,
+) -> AppResult<()> {
+  let source_id = format!("stock_lot:{lot_id}");
+  let total_cents = (buy_price_cents as f64 * shares).round() as i64;
+  let title = format!("Aktienkauf: {}", stock_name.trim());
+  let updated = conn.execute(
+    "UPDATE ledger_transactions SET date = ?2, amount_cents = ?3, title = ?4 WHERE source_id = ?1",
+    params![source_id, buy_date, -total_cents, title],
+  )?;
+  if updated == 0 && total_cents > 0 {
+    if let Some(payment_id) = conn.query_row(
+      "SELECT payment_account_id FROM stock_lots WHERE id = ?1",
+      params![lot_id],
+      |r| r.get::<_, Option<String>>(0),
+    ).optional()? {
+      if let Some(account_id) = payment_id.filter(|s| !s.is_empty()) {
+        book_stock_purchase_ledger(conn, lot_id, buy_date, buy_price_cents, shares, stock_name, &account_id)?;
+      }
+    }
+  }
+  Ok(())
+}
+
+fn book_stock_sale_ledger(
+  conn: &rusqlite::Connection,
+  sale_id: &str,
+  sale_date: &str,
+  net_proceeds_cents: i64,
+  stock_name: &str,
+  payment_account_id: &str,
+) -> AppResult<()> {
+  if net_proceeds_cents <= 0 {
+    return Ok(());
+  }
+  let source_id = format!("stock_sale:{sale_id}");
+  let exists: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM ledger_transactions WHERE source_id = ?1",
+    params![source_id],
+    |r| r.get(0),
+  )?;
+  if exists > 0 {
+    return Ok(());
+  }
+  let tx_id = Uuid::new_v4().to_string();
+  let now = Utc::now().to_rfc3339();
+  let title = format!("Aktienverkauf: {}", stock_name.trim());
+  conn.execute(
+    "INSERT INTO ledger_transactions (id, date, amount_cents, account_id, from_account_id, to_account_id, kind, title, notes, source_id, created_at) VALUES (?1, ?2, ?3, ?4, NULL, NULL, 'income', ?5, NULL, ?6, ?7)",
+    params![tx_id, sale_date, net_proceeds_cents, payment_account_id, title, source_id, now],
+  )?;
+  Ok(())
+}
+
+fn apply_fifo_sale(conn: &rusqlite::Connection, holding_id: &str, mut shares_to_sell: f64) -> AppResult<()> {
+  if shares_to_sell <= 0.0 {
+    return Err(AppError::Invalid("shares must be positive".into()));
+  }
+  let mut lots = load_lots(conn, holding_id)?;
+  lots.sort_by(|a, b| a.buy_date.cmp(&b.buy_date).then(a.created_at.cmp(&b.created_at)));
+  let total: f64 = lots.iter().map(|l| l.shares).sum();
+  if shares_to_sell > total + f64::EPSILON {
+    return Err(AppError::Invalid("not enough shares to sell".into()));
+  }
+  for lot in lots {
+    if shares_to_sell <= f64::EPSILON {
+      break;
+    }
+    if lot.shares <= shares_to_sell + f64::EPSILON {
+      shares_to_sell -= lot.shares;
+      delete_lot_ledger(conn, &lot.id)?;
+      conn.execute("DELETE FROM stock_lots WHERE id = ?1", params![lot.id])?;
+    } else {
+      let remaining = lot.shares - shares_to_sell;
+      conn.execute(
+        "UPDATE stock_lots SET shares = ?2 WHERE id = ?1",
+        params![lot.id, remaining],
+      )?;
+      if !lot.is_transfer {
+        if let Some(payment_id) = lot.payment_account_id.as_deref() {
+          let holding = load_holding(conn, holding_id)?;
+          update_lot_ledger(conn, &lot.id, &lot.buy_date, lot.buy_price_cents, remaining, &holding.name)?;
+          let _ = payment_id;
+        }
+      }
+      shares_to_sell = 0.0;
+    }
+  }
+  let remaining: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM stock_lots WHERE holding_id = ?1",
+    params![holding_id],
+    |r| r.get(0),
+  )?;
+  if remaining == 0 {
+    conn.execute("DELETE FROM stock_holdings WHERE id = ?1", params![holding_id])?;
+  } else {
+    recompute_holding_from_lots(conn, holding_id)?;
+  }
+  Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStockLotInput {
+  pub id: String,
+  pub buy_date: String,
+  pub buy_price_cents: i64,
+  pub shares: f64,
+}
+
+#[tauri::command]
+pub fn update_stock_lot(state: State<'_, AppState>, input: UpdateStockLotInput) -> CmdResult<()> {
+  to_cmd_result(update_stock_lot_inner(state, input))
+}
+
+fn update_stock_lot_inner(state: State<'_, AppState>, input: UpdateStockLotInput) -> AppResult<()> {
+  if input.buy_price_cents <= 0 || input.shares <= 0.0 {
+    return Err(AppError::Invalid("invalid price or shares".into()));
+  }
+  let conn = state.conn.lock().unwrap();
+  let (holding_id, is_transfer, payment_id): (String, i64, Option<String>) = conn.query_row(
+    "SELECT holding_id, is_transfer, payment_account_id FROM stock_lots WHERE id = ?1",
+    params![input.id],
+    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+  )?;
+  let holding = load_holding(&conn, &holding_id)?;
+  conn.execute(
+    "UPDATE stock_lots SET buy_date = ?2, buy_price_cents = ?3, shares = ?4 WHERE id = ?1",
+    params![input.id, input.buy_date, input.buy_price_cents, input.shares],
+  )?;
+  recompute_holding_from_lots(&conn, &holding_id)?;
+  if is_transfer == 0 {
+    if let Some(account_id) = payment_id.filter(|s| !s.is_empty()) {
+      update_lot_ledger(
+        &conn,
+        &input.id,
+        &input.buy_date,
+        input.buy_price_cents,
+        input.shares,
+        &holding.name,
+      )?;
+      let _ = account_id;
+    }
+  }
+  Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SellStockHoldingInput {
+  pub holding_id: String,
+  pub date: String,
+  pub shares: Option<f64>,
+  pub percent: Option<f64>,
+  pub sale_price_cents: i64,
+  pub fees_cents: i64,
+}
+
+#[tauri::command]
+pub fn sell_stock_holding(state: State<'_, AppState>, input: SellStockHoldingInput) -> CmdResult<bool> {
+  to_cmd_result(sell_stock_holding_inner(state, input))
+}
+
+fn sell_stock_holding_inner(state: State<'_, AppState>, input: SellStockHoldingInput) -> AppResult<bool> {
+  if input.sale_price_cents <= 0 {
+    return Err(AppError::Invalid("sale price must be positive".into()));
+  }
+  if input.fees_cents < 0 {
+    return Err(AppError::Invalid("fees must be >= 0".into()));
+  }
+  let conn = state.conn.lock().unwrap();
+  let holding = load_holding(&conn, &input.holding_id)?;
+  let depot_id = holding
+    .depot_account_id
+    .as_deref()
+    .ok_or_else(|| AppError::Invalid("holding has no depot".into()))?;
+  let payment_account_id = resolve_payment_account_id(&conn, depot_id, &None)?;
+  let total_shares = holding.shares;
+  let shares_to_sell = if let Some(sh) = input.shares {
+    sh
+  } else if let Some(pct) = input.percent {
+    if pct <= 0.0 || pct > 100.0 {
+      return Err(AppError::Invalid("percent must be between 0 and 100".into()));
+    }
+    total_shares * (pct / 100.0)
+  } else {
+    return Err(AppError::Invalid("shares or percent required".into()));
+  };
+  if shares_to_sell <= 0.0 {
+    return Err(AppError::Invalid("shares must be positive".into()));
+  }
+  let gross_cents = (shares_to_sell * input.sale_price_cents as f64).round() as i64;
+  let net_cents = gross_cents - input.fees_cents;
+  let sale_id = Uuid::new_v4().to_string();
+  apply_fifo_sale(&conn, &input.holding_id, shares_to_sell)?;
+  book_stock_sale_ledger(
+    &conn,
+    &sale_id,
+    &input.date,
+    net_cents,
+    &holding.name,
+    &payment_account_id,
+  )?;
+  drop(conn);
+  let _ = crate::portfolio_cache::refresh_now(&state);
+  let remaining: i64 = {
+    let conn = state.conn.lock().unwrap();
+    conn.query_row(
+      "SELECT COUNT(*) FROM stock_holdings WHERE id = ?1",
+      params![input.holding_id],
+      |r| r.get(0),
+    )?
+  };
+  Ok(remaining > 0)
 }
 
 #[tauri::command]

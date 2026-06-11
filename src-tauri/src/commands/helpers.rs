@@ -13,11 +13,11 @@ pub(crate) fn default_icon_for_kind(kind: &str) -> &'static str {
   match kind {
     "income" => "banknote",
     "expense" | "buy_apply" | "buy_planned" => "shop",
-    "transfer" => "wallet",
+    "transfer" => "repeat",
     "fixed_cost" => "calendar",
-    "adjustment" => "target",
+    "adjustment" => "list",
     "forecast" => "trending",
-    _ => "target",
+    _ => "repeat",
   }
 }
 

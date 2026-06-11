@@ -159,6 +159,7 @@ pub(crate) fn push_fixed_cost_events_for_range(
         fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
       });
     }

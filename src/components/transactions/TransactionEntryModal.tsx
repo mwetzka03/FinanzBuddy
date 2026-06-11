@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import type {
   Account,
   BuyItem,
+  BuyItemGroup,
   Cadence,
   FixedCost,
   FixedCostDueRule,
   IncomeForecast,
   IncomeForecastDueRule,
   IsoDate,
+  IsoMonth,
   LedgerTransaction,
   VariableCost,
 } from '../../lib/types';
@@ -26,6 +28,7 @@ import { formatDisplayDate, isoToday } from '../../lib/date';
 import { parseEurToCents } from '../../lib/money';
 import { parseIncomeForecastSourceId } from '../../lib/transactionList';
 import {
+  createBuyItem,
   createFixedCost,
   createIncomeForecast,
   createLedgerTransaction,
@@ -46,6 +49,7 @@ type EditEntryType = LedgerKind | 'transfer';
 type CreateEntryType = LedgerKind | 'income_forecast' | 'expense_forecast' | 'transfer';
 
 const INCOME_CADENCE: Cadence[] = ['once', 'yearly', 'monthly', 'weekly', 'biweekly'];
+const EXPENSE_CADENCE: Cadence[] = ['yearly', 'monthly', 'weekly', 'biweekly'];
 const INCOME_DUE_RULES: IncomeForecastDueRule[] = ['calendar_day', 'first_business_day', 'last_business_day'];
 const EXPENSE_DUE_RULES: FixedCostDueRule[] = ['calendar_day', 'first_business_day', 'last_business_day'];
 
@@ -81,6 +85,7 @@ export function TransactionEntryModal({
   variableCosts,
   fixedCosts,
   buyItems,
+  buyItemGroups = [],
   incomeForecasts,
   onClose,
   onSaved,
@@ -93,6 +98,7 @@ export function TransactionEntryModal({
   variableCosts: VariableCost[];
   fixedCosts: FixedCost[];
   buyItems: BuyItem[];
+  buyItemGroups?: BuyItemGroup[];
   incomeForecasts: IncomeForecast[];
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -122,6 +128,7 @@ export function TransactionEntryModal({
   const [fromAccountId, setFromAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
 
+  const [oneTimeEntry, setOneTimeEntry] = useState(true);
   const [forecastName, setForecastName] = useState('');
   const [cadence, setCadence] = useState<Cadence>('monthly');
   const [firstChargeDate, setFirstChargeDate] = useState<IsoDate>(isoToday());
@@ -164,8 +171,8 @@ export function TransactionEntryModal({
         setFromAccountId(row.accountId ?? (accountId || mainAccountId));
         setToAccountId('');
       }
-      setExpenseCategory(expenseCategoryFromLedger(row.variableCostId, row.fixedCostId, row.buyItemId));
-      setIcon(row.icon || DEFAULT_KIND_ICON[row.kind] || 'target');
+      setExpenseCategory(expenseCategoryFromLedger(row.variableCostId, row.fixedCostId, row.buyItemId, row.buyItemGroupId));
+      setIcon(row.icon || DEFAULT_KIND_ICON[row.kind] || 'repeat');
       setColor(row.color || DEFAULT_KIND_COLOR[row.kind] || '#6366f1');
       const linked = parseIncomeForecastSourceId(row.sourceId);
       setLinkForecastId(linked?.forecastId ?? '');
@@ -184,6 +191,7 @@ export function TransactionEntryModal({
     setColor(DEFAULT_KIND_COLOR.expense);
     setFromAccountId(accountId || mainAccountId);
     setToAccountId('');
+    setOneTimeEntry(true);
     setForecastName('');
     setCadence('monthly');
     setFirstChargeDate(today);
@@ -244,9 +252,20 @@ export function TransactionEntryModal({
       }
       setToAccountId('');
       setExpenseCategory({ kind: 'none', id: null });
+    } else if (next === 'income_forecast') {
+      setOneTimeEntry(true);
+      setIcon(DEFAULT_KIND_ICON.income_forecast);
+      setColor(DEFAULT_KIND_COLOR.income_forecast);
+    } else if (next === 'expense_forecast') {
+      setOneTimeEntry(true);
+      setIcon(DEFAULT_KIND_ICON.expense_forecast);
+      setColor(DEFAULT_KIND_COLOR.expense_forecast);
+    } else if (next === 'transfer') {
+      setIcon(DEFAULT_KIND_ICON.transfer);
+      setColor(DEFAULT_KIND_COLOR.transfer);
     } else if (isLedgerCreateType(next as CreateEntryType) || next === 'income' || next === 'expense' || next === 'adjustment') {
       const ledgerKind = next as LedgerKind;
-      setIcon(DEFAULT_KIND_ICON[ledgerKind] ?? 'target');
+      setIcon(DEFAULT_KIND_ICON[ledgerKind] ?? 'repeat');
       setColor(DEFAULT_KIND_COLOR[ledgerKind] ?? '#6366f1');
       if (!canAssignCategory(ledgerKind)) {
         setExpenseCategory({ kind: 'none', id: null });
@@ -271,6 +290,8 @@ export function TransactionEntryModal({
   const showIncomeForecastLink = isEdit && !!row && row.kind === 'income' && editableIncomeForecasts.length > 0;
   const showLedgerFields =
     entryType !== 'transfer' && (isEdit || isLedgerCreateType(entryType as CreateEntryType));
+  const showIconColorFields =
+    showLedgerFields || showTransferFields || showIncomeForecastFields || showExpenseForecastFields;
 
   async function save() {
     onError(null);
@@ -358,35 +379,54 @@ export function TransactionEntryModal({
           toAccountId,
           title: title.trim() || t('accounts.defaultTransferTitle'),
           notes: description.trim() ? description : null,
+          icon,
+          color,
         });
       } else if (entryType === 'income_forecast') {
         if (!forecastName.trim() || !amount.trim()) return;
         await createIncomeForecast({
           name: forecastName.trim(),
           amountCents: parseEurToCents(amount),
-          cadence,
+          cadence: oneTimeEntry ? 'once' : cadence,
           firstChargeDate,
-          dueRule: dueRule as IncomeForecastDueRule,
-          dayOfMonth: dueRule === 'calendar_day' ? Number(dayOfMonth || '1') : null,
-          endChargeDate: hasEndDate ? endChargeDate : null,
+          dueRule: oneTimeEntry ? 'calendar_day' : (dueRule as IncomeForecastDueRule),
+          dayOfMonth: oneTimeEntry
+            ? Number(dayFromIso(firstChargeDate))
+            : dueRule === 'calendar_day'
+              ? Number(dayOfMonth || '1')
+              : null,
+          endChargeDate: oneTimeEntry ? null : hasEndDate ? endChargeDate : null,
           accountId: incomeForecastAccountId || mainAccountId,
-        });
-      } else if (entryType === 'expense_forecast') {
-        if (!forecastName.trim() || !amount.trim()) return;
-        await createFixedCost({
-          name: forecastName.trim(),
-          amountCents: parseEurToCents(amount),
-          cadence: 'once',
-          firstChargeDate,
-          active: true,
-          notes: null,
-          dueRule: 'calendar_day',
-          dayOfMonth: Number(firstChargeDate.slice(8, 10) || '1'),
-          endChargeDate: firstChargeDate,
-          accountId: expenseAccountId || mainAccountId,
           icon,
           color,
         });
+      } else if (entryType === 'expense_forecast') {
+        if (!forecastName.trim() || !amount.trim()) return;
+        if (oneTimeEntry) {
+          await createBuyItem({
+            name: forecastName.trim(),
+            description: null,
+            amountCents: parseEurToCents(amount),
+            plannedMonth: firstChargeDate.slice(0, 7) as IsoMonth,
+            icon,
+            color,
+          });
+        } else {
+          await createFixedCost({
+            name: forecastName.trim(),
+            amountCents: parseEurToCents(amount),
+            cadence,
+            firstChargeDate,
+            active: true,
+            notes: null,
+            dueRule: dueRule as FixedCostDueRule,
+            dayOfMonth: dueRule === 'calendar_day' ? Number(dayOfMonth || '1') : null,
+            endChargeDate: hasEndDate ? endChargeDate : null,
+            accountId: expenseAccountId || mainAccountId,
+            icon,
+            color,
+          });
+        }
       } else if (isLedgerCreateType(entryType)) {
         const ledgerAccount = fromAccountId || accountId || mainAccountId;
         if (!amount.trim() || !ledgerAccount) return;
@@ -516,7 +556,12 @@ export function TransactionEntryModal({
 
         {showIncomeForecastFields ? (
           <>
-            <p className="fh-form-hint">{t('incomeForecasts.formHint')}</p>
+            <p className="fh-form-hint">
+              {oneTimeEntry ? t('transactions.oneTimeIncomeHint') : t('incomeForecasts.formHint')}
+            </p>
+            <Checkbox checked={oneTimeEntry} onChange={setOneTimeEntry} hint={t('transactions.oneTimeEntryHint')}>
+              {t('transactions.oneTimeEntry')}
+            </Checkbox>
             <div className="fh-form-row">
               <label>
                 {t('common.name')}
@@ -531,80 +576,91 @@ export function TransactionEntryModal({
                 <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="2500,00" />
               </label>
             </div>
-            <label>
-              {t('transactions.accountLabel')}
-              <select
-                value={incomeForecastAccountId || mainAccountId}
-                onChange={(e) => setIncomeForecastAccountId(e.target.value)}
-              >
-                {ledgerAccounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="fh-form-row">
+            {!oneTimeEntry ? (
               <label>
-                {t('common.rhythm')}
-                <select value={cadence} onChange={(e) => setCadence(e.target.value as Cadence)}>
-                  {INCOME_CADENCE.map((key) => (
-                    <option key={key} value={key}>
-                      {t(`cadence.${key}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t('common.firstPayment')}
-                <DateInput value={firstChargeDate} onChange={onFirstPaymentChange} />
-              </label>
-            </div>
-            <div className="fh-form-row">
-              <label>
-                {t('common.due')}
+                {t('transactions.accountLabel')}
                 <select
-                  value={dueRule}
-                  onChange={(e) => {
-                    const rule = e.target.value as IncomeForecastDueRule;
-                    setDueRule(rule);
-                    if (rule !== 'calendar_day') setDayOfMonth('');
-                  }}
+                  value={incomeForecastAccountId || mainAccountId}
+                  onChange={(e) => setIncomeForecastAccountId(e.target.value)}
                 >
-                  {INCOME_DUE_RULES.map((key) => (
-                    <option key={key} value={key}>
-                      {t(`dueRule.${key}`)}
+                  {ledgerAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
                     </option>
                   ))}
                 </select>
               </label>
-              <label>
-                {t('common.dayOfMonth')}
-                <input
-                  value={dayOfMonth}
-                  onChange={(e) => setDayOfMonth(e.target.value)}
-                  disabled={dayOfMonthDisabled}
-                  inputMode="numeric"
-                  placeholder={t('common.day')}
-                />
-              </label>
-            </div>
-            <div className="fh-form-block">
-              <Checkbox checked={hasEndDate} onChange={setHasEndDate}>
-                {t('common.endDateOptional')}
-              </Checkbox>
-              {hasEndDate ? (
-                <DateInput value={endChargeDate} onChange={setEndChargeDate} />
-              ) : (
-                <div style={{ padding: '8px 0', color: ui.colors.textMuted, fontSize: 13 }}>{t('common.unlimited')}</div>
-              )}
-            </div>
+            ) : null}
+            <label>
+              {oneTimeEntry ? t('common.date') : t('common.firstPayment')}
+              <DateInput value={firstChargeDate} onChange={onFirstPaymentChange} />
+            </label>
+            {!oneTimeEntry ? (
+              <>
+                <div className="fh-form-row">
+                  <label>
+                    {t('common.rhythm')}
+                    <select value={cadence} onChange={(e) => setCadence(e.target.value as Cadence)}>
+                      {INCOME_CADENCE.map((key) => (
+                        <option key={key} value={key}>
+                          {t(`cadence.${key}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="fh-form-row">
+                  <label>
+                    {t('common.due')}
+                    <select
+                      value={dueRule}
+                      onChange={(e) => {
+                        const rule = e.target.value as IncomeForecastDueRule;
+                        setDueRule(rule);
+                        if (rule !== 'calendar_day') setDayOfMonth('');
+                      }}
+                    >
+                      {INCOME_DUE_RULES.map((key) => (
+                        <option key={key} value={key}>
+                          {t(`dueRule.${key}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    {t('common.dayOfMonth')}
+                    <input
+                      value={dayOfMonth}
+                      onChange={(e) => setDayOfMonth(e.target.value)}
+                      disabled={dayOfMonthDisabled}
+                      inputMode="numeric"
+                      placeholder={t('common.day')}
+                    />
+                  </label>
+                </div>
+                <div className="fh-form-block">
+                  <Checkbox checked={hasEndDate} onChange={setHasEndDate}>
+                    {t('common.endDateOptional')}
+                  </Checkbox>
+                  {hasEndDate ? (
+                    <DateInput value={endChargeDate} onChange={setEndChargeDate} />
+                  ) : (
+                    <div style={{ padding: '8px 0', color: ui.colors.textMuted, fontSize: 13 }}>{t('common.unlimited')}</div>
+                  )}
+                </div>
+              </>
+            ) : null}
           </>
         ) : null}
 
         {showExpenseForecastFields ? (
           <>
-            <p className="fh-form-hint">{t('fixedCosts.formHint')}</p>
+            <p className="fh-form-hint">
+              {oneTimeEntry ? t('buyList.intro') : t('fixedCosts.formHint')}
+            </p>
+            <Checkbox checked={oneTimeEntry} onChange={setOneTimeEntry} hint={t('transactions.oneTimeEntryHint')}>
+              {t('transactions.oneTimeEntry')}
+            </Checkbox>
             <div className="fh-form-row">
               <label>
                 {t('common.name')}
@@ -619,71 +675,77 @@ export function TransactionEntryModal({
                 <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="850,00" />
               </label>
             </div>
+            {!oneTimeEntry ? (
+              <label>
+                {t('transactions.accountLabel')}
+                <select value={expenseAccountId || mainAccountId} onChange={(e) => setExpenseAccountId(e.target.value)}>
+                  {ledgerAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label>
-              {t('transactions.accountLabel')}
-              <select value={expenseAccountId || mainAccountId} onChange={(e) => setExpenseAccountId(e.target.value)}>
-                {ledgerAccounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+              {oneTimeEntry ? t('common.date') : t('common.firstCharge')}
+              <DateInput value={firstChargeDate} onChange={onFirstPaymentChange} />
             </label>
-            <div className="fh-form-row">
-              <label>
-                {t('common.rhythm')}
-                <select value={cadence} onChange={(e) => setCadence(e.target.value as Cadence)}>
-                  {INCOME_CADENCE.map((key) => (
-                    <option key={key} value={key}>
-                      {t(`cadence.${key}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t('common.firstCharge')}
-                <DateInput value={firstChargeDate} onChange={onFirstPaymentChange} />
-              </label>
-            </div>
-            <div className="fh-form-row">
-              <label>
-                {t('common.due')}
-                <select
-                  value={dueRule}
-                  onChange={(e) => {
-                    const rule = e.target.value as FixedCostDueRule;
-                    setDueRule(rule);
-                    if (rule !== 'calendar_day') setDayOfMonth('');
-                  }}
-                >
-                  {EXPENSE_DUE_RULES.map((key) => (
-                    <option key={key} value={key}>
-                      {t(`dueRule.${key}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t('common.dayOfMonth')}
-                <input
-                  value={dayOfMonth}
-                  onChange={(e) => setDayOfMonth(e.target.value)}
-                  disabled={dueRule !== 'calendar_day'}
-                  inputMode="numeric"
-                  placeholder={t('common.day')}
-                />
-              </label>
-            </div>
-            <div className="fh-form-block">
-              <Checkbox checked={hasEndDate} onChange={setHasEndDate}>
-                {t('common.endDateOptional')}
-              </Checkbox>
-              {hasEndDate ? (
-                <DateInput value={endChargeDate} onChange={setEndChargeDate} />
-              ) : (
-                <div style={{ padding: '8px 0', color: ui.colors.textMuted, fontSize: 13 }}>{t('common.unlimited')}</div>
-              )}
-            </div>
+            {!oneTimeEntry ? (
+              <>
+                <div className="fh-form-row">
+                  <label>
+                    {t('common.rhythm')}
+                    <select value={cadence} onChange={(e) => setCadence(e.target.value as Cadence)}>
+                      {EXPENSE_CADENCE.map((key) => (
+                        <option key={key} value={key}>
+                          {t(`cadence.${key}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="fh-form-row">
+                  <label>
+                    {t('common.due')}
+                    <select
+                      value={dueRule}
+                      onChange={(e) => {
+                        const rule = e.target.value as FixedCostDueRule;
+                        setDueRule(rule);
+                        if (rule !== 'calendar_day') setDayOfMonth('');
+                      }}
+                    >
+                      {EXPENSE_DUE_RULES.map((key) => (
+                        <option key={key} value={key}>
+                          {t(`dueRule.${key}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    {t('common.dayOfMonth')}
+                    <input
+                      value={dayOfMonth}
+                      onChange={(e) => setDayOfMonth(e.target.value)}
+                      disabled={dueRule !== 'calendar_day'}
+                      inputMode="numeric"
+                      placeholder={t('common.day')}
+                    />
+                  </label>
+                </div>
+                <div className="fh-form-block">
+                  <Checkbox checked={hasEndDate} onChange={setHasEndDate}>
+                    {t('common.endDateOptional')}
+                  </Checkbox>
+                  {hasEndDate ? (
+                    <DateInput value={endChargeDate} onChange={setEndChargeDate} />
+                  ) : (
+                    <div style={{ padding: '8px 0', color: ui.colors.textMuted, fontSize: 13 }}>{t('common.unlimited')}</div>
+                  )}
+                </div>
+              </>
+            ) : null}
           </>
         ) : null}
 
@@ -722,6 +784,7 @@ export function TransactionEntryModal({
                     variableCosts={variableCosts}
                     fixedCosts={fixedCosts}
                     buyItems={buyItems}
+                    buyItemGroups={buyItemGroups}
                     value={expenseCategory}
                     onChange={setExpenseCategory}
                   />
@@ -776,6 +839,11 @@ export function TransactionEntryModal({
                 </div>
               </>
             ) : null}
+          </>
+        ) : null}
+
+        {showIconColorFields ? (
+          <>
             <label>
               {t('common.icon')}
               <IconPicker value={icon} onChange={setIcon} />

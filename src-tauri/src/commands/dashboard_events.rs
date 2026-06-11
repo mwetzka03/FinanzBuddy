@@ -5,7 +5,7 @@ use super::helpers::{
   account_balance_source, account_filter_scope, account_liquid_map, account_name_map, account_name_of,
   event_matches_account,
 };
-use super::prognostic::{ledger_transfers_in_range, push_depot_stock_purchase_events};
+use super::prognostic::{ledger_transfers_in_range, push_all_depot_stock_purchase_events, push_depot_stock_purchase_events};
 use crate::accounts::{
   get_main_account_id, get_primary_income_employer_iban, get_primary_income_forecast_id,
 };
@@ -25,6 +25,7 @@ fn expense_event_display(
   fixed_cost_id: Option<&str>,
   variable_cost_id: Option<&str>,
   buy_item_id: Option<&str>,
+  buy_item_group_id: Option<&str>,
 ) -> AppResult<(String, Option<String>)> {
   if kind != "expense" {
     return Ok((title.to_string(), notes.map(str::to_string)));
@@ -48,6 +49,14 @@ fn expense_event_display(
   if let Some(buy_id) = buy_item_id {
     let name: Option<String> = conn
       .query_row("SELECT name FROM buy_items WHERE id = ?1", params![buy_id], |r| r.get(0))
+      .optional()?;
+    if let Some(n) = name {
+      return Ok((n, notes.map(str::to_string)));
+    }
+  }
+  if let Some(group_id) = buy_item_group_id {
+    let name: Option<String> = conn
+      .query_row("SELECT name FROM buy_item_groups WHERE id = ?1", params![group_id], |r| r.get(0))
       .optional()?;
     if let Some(n) = name {
       return Ok((n, notes.map(str::to_string)));
@@ -119,6 +128,18 @@ fn dedupe_income_events(events: &mut Vec<TimelineEvent>) {
     );
     !ledger_keys.contains(&key)
   });
+}
+
+fn buy_item_not_in_group(conn: &Connection, buy_item_id: &str) -> AppResult<bool> {
+  if buy_item_id.trim().is_empty() {
+    return Ok(true);
+  }
+  let in_group: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM buy_items WHERE id = ?1 AND group_id IS NOT NULL",
+    params![buy_item_id],
+    |r| r.get(0),
+  )?;
+  Ok(in_group == 0)
 }
 
 fn extract_iban_from_ledger_notes(notes: &str) -> Option<String> {
@@ -304,6 +325,7 @@ fn append_primary_employer_income_for_range(
       fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
     });
   }
@@ -364,6 +386,7 @@ fn append_booked_income_actuals_for_range(
       fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
     });
   }
@@ -398,7 +421,7 @@ pub(crate) fn build_dashboard_month_events(
   let ledger_start = crate::dashboard_period::day_before(&event_start)
     .unwrap_or_else(|_| event_start.clone());
   let mut stmt = conn.prepare(
-    "SELECT id, kind, title, amount_cents, date, account_id, from_account_id, to_account_id, variable_cost_id, fixed_cost_id, buy_item_id, source_id, notes, internal_transfer
+    "SELECT id, kind, title, amount_cents, date, account_id, from_account_id, to_account_id, variable_cost_id, fixed_cost_id, buy_item_id, buy_item_group_id, source_id, notes, internal_transfer
      FROM ledger_transactions WHERE date >= ?1 AND date <= ?2 ORDER BY date ASC",
   )?;
   let rows = stmt.query_map(params![ledger_start.clone(), event_end.clone()], |r| {
@@ -416,17 +439,25 @@ pub(crate) fn build_dashboard_month_events(
       r.get::<_, Option<String>>(10)?,
       r.get::<_, Option<String>>(11)?,
       r.get::<_, Option<String>>(12)?,
-      r.get::<_, i64>(13)?,
+      r.get::<_, Option<String>>(13)?,
+      r.get::<_, i64>(14)?,
     ))
   })?;
   for row in rows {
-    let (id, kind, title, amount_cents, ev_date, acc, from_id, to_id, variable_cost_id, fixed_cost_id, buy_item_id, source_id, notes, internal_transfer) = row?;
+    let (id, kind, title, amount_cents, ev_date, acc, from_id, to_id, variable_cost_id, fixed_cost_id, buy_item_id, buy_item_group_id, source_id, notes, internal_transfer) = row?;
     if kind == "adjustment" {
       continue;
     }
     let aid = acc.as_deref().unwrap_or("");
     if should_skip_prognostic_income_ledger(&conn, &kind, source_id.as_deref(), &id, notes.as_deref())? {
       continue;
+    }
+    if account_id.is_none() {
+      if let Some(sid) = source_id.as_deref() {
+        if sid.starts_with("stock_lot:") {
+          continue;
+        }
+      }
     }
     if kind == "transfer" || internal_transfer != 0 {
       let from = from_id.as_deref().unwrap_or("");
@@ -450,6 +481,7 @@ pub(crate) fn build_dashboard_month_events(
             fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
           });
         } else if crate::accounts::scope_contains(&filter_scope, to) {
@@ -465,6 +497,7 @@ pub(crate) fn build_dashboard_month_events(
             fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
           });
         }
@@ -492,6 +525,7 @@ pub(crate) fn build_dashboard_month_events(
           fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
         });
       }
@@ -501,10 +535,19 @@ pub(crate) fn build_dashboard_month_events(
       continue;
     }
     if kind == "buy_apply" {
-      out.buys_sum += amount_cents.abs();
+      if buy_item_not_in_group(conn, source_id.as_deref().unwrap_or(""))? {
+        out.buys_sum += amount_cents.abs();
+      }
     }
     if kind == "expense" {
-      if buy_item_id.is_some() {
+      if let Some(ref bid) = buy_item_id {
+        if buy_item_not_in_group(conn, bid)?
+          && ev_date.as_str() >= event_start.as_str()
+          && ev_date.as_str() <= event_end.as_str()
+        {
+          out.buys_sum += amount_cents.abs();
+        }
+      } else if buy_item_group_id.is_some() {
         if ev_date.as_str() >= event_start.as_str() && ev_date.as_str() <= event_end.as_str() {
           out.buys_sum += amount_cents.abs();
         }
@@ -535,6 +578,7 @@ pub(crate) fn build_dashboard_month_events(
         fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
       });
       continue;
@@ -550,6 +594,7 @@ pub(crate) fn build_dashboard_month_events(
       fixed_cost_id.as_deref(),
       variable_cost_id.as_deref(),
       buy_item_id.as_deref(),
+      buy_item_group_id.as_deref(),
     )?;
     out.events.push(TimelineEvent {
       id: format!("ledger:{}:{}", kind, id),
@@ -563,6 +608,7 @@ pub(crate) fn build_dashboard_month_events(
       fixed_cost_id: fixed_cost_id.clone(),
       variable_cost_id: variable_cost_id.clone(),
       buy_item_id: buy_item_id.clone(),
+      buy_item_group_id: buy_item_group_id.clone(),
       notes: event_notes,
     });
   }
@@ -630,7 +676,7 @@ pub(crate) fn build_dashboard_month_events(
       month.to_string()
     };
     let mut stmt2 = conn.prepare(
-      "SELECT id, name, amount_cents FROM buy_items WHERE status='parked' AND planned_month = ?1",
+      "SELECT id, name, amount_cents FROM buy_items WHERE status='parked' AND planned_month = ?1 AND group_id IS NULL",
     )?;
     for row in stmt2.query_map(params![buy_month.as_str()], |r| {
       Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
@@ -649,13 +695,59 @@ pub(crate) fn build_dashboard_month_events(
         internal_transfer: false,
         fixed_cost_id: None,
         variable_cost_id: None,
+        buy_item_id: Some(id),
+        buy_item_group_id: None,
+        notes: None,
+      });
+    }
+
+    let mut stmt_groups = conn.prepare(
+      "SELECT g.id, g.name, g.icon, g.color, COALESCE(SUM(b.amount_cents), 0)
+       FROM buy_item_groups g
+       JOIN buy_items b ON b.group_id = g.id AND b.status = 'parked'
+       WHERE g.planned_month = ?1
+       GROUP BY g.id, g.name, g.icon, g.color
+       HAVING SUM(b.amount_cents) > 0",
+    )?;
+    for row in stmt_groups.query_map(params![buy_month.as_str()], |r| {
+      Ok((
+        r.get::<_, String>(0)?,
+        r.get::<_, String>(1)?,
+        r.get::<_, String>(2)?,
+        r.get::<_, String>(3)?,
+        r.get::<_, i64>(4)?,
+      ))
+    })? {
+      let (group_id, name, _icon, _color, amount_cents) = row?;
+      let event_date = crate::dashboard_period::buy_planned_event_date(&buy_month, &event_start, &event_end);
+      out.buys_sum += amount_cents;
+      out.events.push(TimelineEvent {
+        id: format!("buy_planned:group:{}:{}", group_id, buy_month),
+        r#type: "buy_planned".into(),
+        date: event_date,
+        title: format!("{name} (geplant)"),
+        amount_cents: -amount_cents,
+        account_id: Some(main_id.clone()),
+        account_name: Some(main_name.clone()),
+        internal_transfer: false,
+        fixed_cost_id: None,
+        variable_cost_id: None,
         buy_item_id: None,
+        buy_item_group_id: Some(group_id),
         notes: None,
       });
     }
   }
 
-  if let Some(ref fid) = account_id {
+  if account_id.is_none() {
+    push_all_depot_stock_purchase_events(
+      conn,
+      &names,
+      cal_range_start,
+      cal_range_end,
+      &mut out.events,
+    )?;
+  } else if let Some(ref fid) = account_id {
     if account_balance_source(conn, fid)? == "stock_portfolio" {
       push_depot_stock_purchase_events(
         conn,

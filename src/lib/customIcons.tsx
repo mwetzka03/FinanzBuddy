@@ -64,3 +64,17 @@ export const BeerIcon = makeIcon(
     <circle cx="15" cy="6.8" r="0.5" fill="currentColor" stroke="none" />
   </>,
 );
+
+export const GrillIcon = makeIcon(
+  <>
+    <path d="M4 10h16" />
+    <path d="M6 10V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3" />
+    <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
+    <path d="M8 14h.01" />
+    <path d="M12 14h.01" />
+    <path d="M16 14h.01" />
+    <path d="M7 20h10" />
+    <path d="M9 20v2" />
+    <path d="M15 20v2" />
+  </>,
+);

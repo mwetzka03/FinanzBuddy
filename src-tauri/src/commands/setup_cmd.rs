@@ -19,6 +19,7 @@ fn clear_all_transactions_inner(state: State<'_, AppState>) -> AppResult<()> {
   tx.execute("DELETE FROM variable_costs", [])?;
   tx.execute("DELETE FROM fixed_costs", [])?;
   tx.execute("DELETE FROM buy_items", [])?;
+  tx.execute("DELETE FROM buy_item_groups", [])?;
   tx.execute("DELETE FROM expense_group_lines", [])?;
   tx.execute("DELETE FROM expense_groups", [])?;
   tx.execute("DELETE FROM debt_transactions", [])?;
@@ -53,6 +54,7 @@ fn reset_all_user_data_inner(state: State<'_, AppState>) -> AppResult<()> {
   tx.execute("DELETE FROM variable_costs", [])?;
   tx.execute("DELETE FROM fixed_costs", [])?;
   tx.execute("DELETE FROM buy_items", [])?;
+  tx.execute("DELETE FROM buy_item_groups", [])?;
   tx.execute("DELETE FROM expense_group_lines", [])?;
   tx.execute("DELETE FROM expense_groups", [])?;
   tx.execute("DELETE FROM debt_transactions", [])?;

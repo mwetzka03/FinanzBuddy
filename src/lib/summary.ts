@@ -8,8 +8,14 @@ export const DASHBOARD_MIN_MONTH_FALLBACK = '2020-01' as IsoMonth;
 const PLANNED_EXPENSE_EVENT_TYPES = new Set(['fixed_cost', 'variable_cost', 'buy_planned', 'buy_apply']);
 
 /** Wie Backend `aggregate_period_flows`: Adjustments/Depot und interne Transfers ohne Konto zählen nicht. */
-function isBalanceOnlyEvent(ev: TimelineEvent, _savingsPot?: boolean, _accountId?: string | null): boolean {
-  if (ev.type === 'adjustment' || ev.type === 'stock_purchase') return true;
+function isBalanceOnlyEvent(
+  ev: TimelineEvent,
+  _savingsPot?: boolean,
+  accountId?: string | null,
+  isStockDepot?: boolean,
+): boolean {
+  if (ev.type === 'adjustment') return true;
+  if (ev.type === 'stock_purchase') return isStockDepot === true;
   if (isInternalTransferEvent(ev) && !ev.accountId) return true;
   return false;
 }
@@ -29,8 +35,9 @@ function variableCostLedgerExcludedFromFlow(ev: TimelineEvent): boolean {
 export function dashboardEventFlowContribution(
   ev: TimelineEvent,
   accountFilter?: string | null,
+  isStockDepot?: boolean,
 ): number | null {
-  if (isBalanceOnlyEvent(ev)) return null;
+  if (isBalanceOnlyEvent(ev, false, accountFilter, isStockDepot)) return null;
   if (isInternalTransferEvent(ev) && !accountFilter) return null;
   if (variableCostLedgerExcludedFromFlow(ev)) return null;
   return ev.amountCents;
@@ -63,15 +70,33 @@ export type DashboardEventRow = {
   runningSubtotalCents: number;
 };
 
+export function dashboardEventSubtotalContribution(
+  ev: TimelineEvent,
+  filter: DashboardEventFilter,
+  accountFilter?: string | null,
+  isStockDepot?: boolean,
+): number | null {
+  if (isStockDepot && ev.type === 'stock_purchase') {
+    if (filter !== 'all' && filter !== 'expense' && filter !== 'buy') return null;
+    return Math.abs(ev.amountCents);
+  }
+  const contribution = dashboardEventFlowContribution(ev, accountFilter, isStockDepot);
+  if (contribution === null) return null;
+  if (filter === 'fixed_cost' && ev.type === 'expense' && ev.fixedCostId != null) return null;
+  if (filter === 'variable_cost' && ev.type === 'expense' && ev.variableCostId != null) return null;
+  return contribution;
+}
+
 export function dashboardEventsWithRunningSubtotals(
   events: TimelineEvent[],
   filter: DashboardEventFilter,
   accountFilter?: string | null,
+  isStockDepot?: boolean,
 ): DashboardEventRow[] {
   const sorted = sortDashboardEventsChronologically(events);
   let running = 0;
   return sorted.map((event) => {
-    const contribution = dashboardEventFlowContribution(event, accountFilter);
+    const contribution = dashboardEventSubtotalContribution(event, filter, accountFilter, isStockDepot);
     if (contribution !== null) {
       running += subtotalStep(filter, contribution);
     }
@@ -588,7 +613,8 @@ export function filterDashboardEvents(
       (ev) =>
         ev.type === 'buy_apply' ||
         ev.type === 'buy_planned' ||
-        (ev.type === 'expense' && ev.buyItemId),
+        (ev.type === 'expense' && ev.buyItemId) ||
+        (ev.type === 'expense' && ev.buyItemGroupId),
     );
   }
   if (filter === 'income') {

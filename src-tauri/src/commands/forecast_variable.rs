@@ -521,6 +521,7 @@ pub(crate) fn push_variable_cost_events_for_period(
       fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
     });
   }

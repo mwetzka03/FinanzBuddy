@@ -84,10 +84,9 @@ export function App() {
       {setupRequired === false ? (
         <>
           <AppTopBar />
+          <LoadingOverlay />
 
           <main className="fh-main fh-main-with-overlay">
-
-            <LoadingOverlay />
 
             <Routes>
 
@@ -106,6 +105,7 @@ export function App() {
               <Route path="/variable-kosten/:id" element={<VariableCostDetailPage />} />
 
               <Route path="/buy-liste" element={<BuyListPage />} />
+              <Route path="/einkaufszettel" element={<Navigate to="/buy-liste" replace />} />
 
               <Route path="/einnahmen/prognose/:id" element={<IncomeForecastDetailPage />} />
 

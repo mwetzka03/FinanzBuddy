@@ -6,6 +6,7 @@ import type {
   AccountBalanceSource,
   AccountKind,
   BuyItem,
+  BuyItemGroup,
   Cadence,
   DayView,
   FixedCost,
@@ -68,6 +69,7 @@ export async function createAccount(input: {
   accountKind?: AccountKind;
   parentAccountId?: string | null;
   iban?: string | null;
+  linkedLedgerAccountId?: string | null;
 }): Promise<void> {
   await invoke('create_account', {
     input: {
@@ -76,6 +78,7 @@ export async function createAccount(input: {
       accountKind: input.accountKind ?? 'standard',
       parentAccountId: input.parentAccountId ?? null,
       iban: input.iban ?? null,
+      linkedLedgerAccountId: input.linkedLedgerAccountId ?? null,
     },
   });
 }
@@ -93,6 +96,13 @@ export async function updateAccount(input: {
 
 export async function setMainAccount(id: string): Promise<void> {
   await invoke('set_main_account', { id });
+}
+
+export async function setDepotLinkedLedgerAccount(input: {
+  id: string;
+  linkedLedgerAccountId: string;
+}): Promise<void> {
+  await invoke('set_depot_linked_ledger_account', { input });
 }
 
 export async function setAccountLiquid(input: { id: string; isLiquid: boolean }): Promise<void> {
@@ -121,6 +131,7 @@ export async function createLedgerTransaction(input: {
   variableCostId?: string | null;
   fixedCostId?: string | null;
   buyItemId?: string | null;
+  buyItemGroupId?: string | null;
   icon?: string;
   color?: string;
   assignSimilarFixedCost?: boolean;
@@ -138,6 +149,7 @@ export async function updateLedgerTransaction(input: {
   variableCostId?: string | null;
   fixedCostId?: string | null;
   buyItemId?: string | null;
+  buyItemGroupId?: string | null;
   icon?: string;
   color?: string;
   assignSimilarFixedCost?: boolean;
@@ -156,6 +168,8 @@ export async function createTransfer(input: {
   toAccountId: string;
   title: string;
   notes: string | null;
+  icon?: string;
+  color?: string;
 }): Promise<void> {
   await invoke('create_transfer', { input });
 }
@@ -236,6 +250,10 @@ export async function listBuyItems(): Promise<BuyItem[]> {
   return await invoke('list_buy_items');
 }
 
+export async function listBuyItemGroups(): Promise<BuyItemGroup[]> {
+  return await invoke('list_buy_item_groups');
+}
+
 export async function createBuyItem(input: {
   name: string;
   description: string | null;
@@ -243,6 +261,7 @@ export async function createBuyItem(input: {
   plannedMonth: IsoMonth | null;
   icon?: string;
   color?: string;
+  groupId?: string | null;
 }): Promise<void> {
   await invoke('create_buy_item', { input });
 }
@@ -255,12 +274,44 @@ export async function updateBuyItem(input: {
   plannedMonth: IsoMonth | null;
   icon?: string;
   color?: string;
+  groupId?: string | null;
 }): Promise<void> {
   await invoke('update_buy_item', { input });
 }
 
-export async function applyBuyItem(id: string): Promise<void> {
-  await invoke('apply_buy_item', { input: { id } });
+export async function createBuyItemGroup(input: {
+  name: string;
+  description: string | null;
+  plannedMonth: IsoMonth | null;
+  icon?: string;
+  color?: string;
+  itemIds?: string[];
+}): Promise<string> {
+  return await invoke('create_buy_item_group', { input });
+}
+
+export async function updateBuyItemGroup(input: {
+  id: string;
+  name: string;
+  description: string | null;
+  plannedMonth: IsoMonth | null;
+  icon?: string;
+  color?: string;
+  itemIds?: string[];
+}): Promise<void> {
+  await invoke('update_buy_item_group', { input });
+}
+
+export async function deleteBuyItemGroup(id: string): Promise<void> {
+  await invoke('delete_buy_item_group', { id });
+}
+
+export async function applyBuyItem(id: string, ledgerTransactionId?: string | null): Promise<void> {
+  await invoke('apply_buy_item', { input: { id, ledgerTransactionId: ledgerTransactionId ?? null } });
+}
+
+export async function applyBuyItemGroup(groupId: string, ledgerTransactionId?: string | null): Promise<void> {
+  await invoke('apply_buy_item_group', { input: { groupId, ledgerTransactionId: ledgerTransactionId ?? null } });
 }
 
 export async function unapplyBuyItem(id: string): Promise<void> {
@@ -284,6 +335,8 @@ export async function createIncomeForecast(input: {
   dayOfMonth: number | null;
   endChargeDate: IsoDate | null;
   accountId?: string;
+  icon?: string;
+  color?: string;
 }): Promise<void> {
   await invoke('create_income_forecast', { input });
 }
@@ -299,6 +352,8 @@ export async function updateIncomeForecast(input: {
   endChargeDate: IsoDate | null;
   active: boolean;
   accountId?: string;
+  icon?: string;
+  color?: string;
 }): Promise<void> {
   await invoke('update_income_forecast', { input });
 }
@@ -500,12 +555,44 @@ export async function createStockHolding(input: {
   depotAccountId?: string | null;
   paymentAccountId?: string | null;
   isTransfer?: boolean;
+}): Promise<string> {
+  return await invoke('create_stock_holding', { input });
+}
+
+export async function updateStockLot(input: {
+  id: string;
+  buyDate: IsoDate;
+  buyPriceCents: number;
+  shares: number;
 }): Promise<void> {
-  await invoke('create_stock_holding', { input });
+  await invoke('update_stock_lot', { input });
+}
+
+export async function sellStockHolding(input: {
+  holdingId: string;
+  date: IsoDate;
+  shares?: number;
+  percent?: number;
+  salePriceCents: number;
+  feesCents: number;
+}): Promise<boolean> {
+  return await invoke('sell_stock_holding', { input });
 }
 
 export async function deleteStockHolding(id: string): Promise<void> {
   await invoke('delete_stock_holding', { id });
+}
+
+export async function updateStockHolding(input: {
+  id: string;
+  name: string;
+  symbol: string;
+  buyDate: IsoDate;
+  buyPriceCents: number;
+  shares: number;
+  currency?: string;
+}): Promise<void> {
+  await invoke('update_stock_holding', { input });
 }
 
 export async function getStockPositionDetail(id: string): Promise<StockPositionDetail> {

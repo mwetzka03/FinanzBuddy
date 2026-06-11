@@ -169,28 +169,30 @@ pub fn normalize_expense_category_ids(
   variable_cost_id: Option<String>,
   fixed_cost_id: Option<String>,
   buy_item_id: Option<String>,
-) -> AppResult<(Option<String>, Option<String>, Option<String>)> {
+  buy_item_group_id: Option<String>,
+) -> AppResult<(Option<String>, Option<String>, Option<String>, Option<String>)> {
   let variable = variable_cost_id.filter(|v| !v.trim().is_empty());
   let fixed = fixed_cost_id.filter(|v| !v.trim().is_empty());
   let buy = buy_item_id.filter(|v| !v.trim().is_empty());
+  let buy_group = buy_item_group_id.filter(|v| !v.trim().is_empty());
   if kind != "expense" {
-    if variable.is_some() || fixed.is_some() || buy.is_some() {
+    if variable.is_some() || fixed.is_some() || buy.is_some() || buy_group.is_some() {
       return Err(AppError::Invalid(
         "Kategorie ist nur für Ausgaben möglich".into(),
       ));
     }
-    return Ok((None, None, None));
+    return Ok((None, None, None, None));
   }
-  let assigned = [variable.is_some(), fixed.is_some(), buy.is_some()]
+  let assigned = [variable.is_some(), fixed.is_some(), buy.is_some(), buy_group.is_some()]
     .into_iter()
     .filter(|v| *v)
     .count();
   if assigned > 1 {
     return Err(AppError::Invalid(
-      "Nur eine Kategorie (Fix-, variable Kosten oder Einkaufszettel) gleichzeitig".into(),
+      "Nur eine Kategorie (Fix-, variable Kosten, Einkaufszettel oder Gruppe) gleichzeitig".into(),
     ));
   }
-  Ok((variable, fixed, buy))
+  Ok((variable, fixed, buy, buy_group))
 }
 
 fn validate_fixed_cost_id(conn: &Connection, fc_id: &str) -> AppResult<()> {

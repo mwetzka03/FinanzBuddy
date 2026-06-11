@@ -18,6 +18,7 @@ export interface Account {
   parentAccountId: string | null;
   iban: string | null;
   isMain: boolean;
+  linkedLedgerAccountId: string | null;
   createdAt: string;
 }
 
@@ -37,6 +38,7 @@ export interface LedgerTransaction {
   variableCostId: string | null;
   fixedCostId: string | null;
   buyItemId: string | null;
+  buyItemGroupId: string | null;
   icon: string;
   color: string;
   createdAt: string;
@@ -70,6 +72,17 @@ export interface BuyItem {
   plannedMonth: IsoMonth | null;
   icon: string;
   color: string;
+  groupId: string | null;
+  createdAt: string;
+}
+
+export interface BuyItemGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  plannedMonth: IsoMonth | null;
+  icon: string;
+  color: string;
   createdAt: string;
 }
 
@@ -86,6 +99,8 @@ export interface IncomeForecast {
   endChargeDate: IsoDate | null;
   active: boolean;
   accountId: string;
+  icon: string;
+  color: string;
 }
 
 export interface IncomeForecastDetail {
@@ -149,6 +164,7 @@ export interface TimelineEvent {
   variableCostId?: string | null;
   notes?: string | null;
   buyItemId?: string | null;
+  buyItemGroupId?: string | null;
 }
 
 export type DashboardPeriodMode = 'calendar_month' | 'since_last_salary';

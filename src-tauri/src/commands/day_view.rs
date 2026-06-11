@@ -131,6 +131,7 @@ fn get_day_view_inner(state: State<'_, AppState>, date: String, account_id: Opti
         fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
       });
     }
@@ -192,6 +193,7 @@ fn get_day_view_inner(state: State<'_, AppState>, date: String, account_id: Opti
           fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
         });
       }

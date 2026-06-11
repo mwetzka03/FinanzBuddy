@@ -5,6 +5,7 @@ use super::helpers::{
   to_cmd_result, CmdResult,
 };
 use crate::buy_assignment::{apply_buy_item_assignment, clear_buy_assignment_for_transaction};
+use crate::buy_group_assignment::{apply_buy_group_assignment, clear_buy_group_assignment_for_transaction, revert_buy_group};
 use crate::cost_assignment::{apply_expense_category_assignment, normalize_expense_category_ids};
 use crate::error::{AppError, AppResult};
 use crate::models::LedgerTransaction;
@@ -29,6 +30,7 @@ pub struct CreateLedgerTransactionInput {
   pub variable_cost_id: Option<String>,
   pub fixed_cost_id: Option<String>,
   pub buy_item_id: Option<String>,
+  pub buy_item_group_id: Option<String>,
   pub icon: Option<String>,
   pub color: Option<String>,
   pub assign_similar_fixed_cost: Option<bool>,
@@ -67,7 +69,7 @@ fn list_ledger_transactions_inner(
   }
 
   let sql = format!(
-    "SELECT id, date, amount_cents, account_id, from_account_id, to_account_id, kind, title, notes, source_id, variable_cost_id, fixed_cost_id, buy_item_id, icon, color, created_at FROM ledger_transactions WHERE {} ORDER BY date DESC, created_at DESC",
+    "SELECT id, date, amount_cents, account_id, from_account_id, to_account_id, kind, title, notes, source_id, variable_cost_id, fixed_cost_id, buy_item_id, buy_item_group_id, icon, color, created_at FROM ledger_transactions WHERE {} ORDER BY date DESC, created_at DESC",
     where_parts.join(" AND ")
   );
 
@@ -90,9 +92,10 @@ fn list_ledger_transactions_inner(
         variable_cost_id: r.get::<_, Option<String>>(10)?.map(|s| Uuid::parse_str(&s).unwrap()),
         fixed_cost_id: r.get::<_, Option<String>>(11)?.map(|s| Uuid::parse_str(&s).unwrap()),
         buy_item_id: r.get::<_, Option<String>>(12)?.map(|s| Uuid::parse_str(&s).unwrap()),
-        icon: r.get::<_, Option<String>>(13)?.unwrap_or_else(|| "target".into()),
-        color: r.get::<_, Option<String>>(14)?.unwrap_or_else(|| "#6366f1".into()),
-        created_at: chrono::DateTime::parse_from_rfc3339(r.get::<_, String>(15)?.as_str())
+        buy_item_group_id: r.get::<_, Option<String>>(13)?.map(|s| Uuid::parse_str(&s).unwrap()),
+        icon: r.get::<_, Option<String>>(14)?.unwrap_or_else(|| "repeat".into()),
+        color: r.get::<_, Option<String>>(15)?.unwrap_or_else(|| "#6366f1".into()),
+        created_at: chrono::DateTime::parse_from_rfc3339(r.get::<_, String>(16)?.as_str())
           .unwrap()
           .with_timezone(&Utc),
       })
@@ -126,11 +129,12 @@ fn create_ledger_transaction_inner(state: State<'_, AppState>, input: CreateLedg
     return Err(AppError::Invalid("accountId required".into()));
   }
   let amount_cents = normalize_ledger_amount(&input.kind, input.amount_cents);
-  let (variable_cost_id, fixed_cost_id, buy_item_id) = normalize_expense_category_ids(
+  let (variable_cost_id, fixed_cost_id, buy_item_id, buy_item_group_id) = normalize_expense_category_ids(
     &input.kind,
     input.variable_cost_id.clone(),
     input.fixed_cost_id.clone(),
     input.buy_item_id.clone(),
+    input.buy_item_group_id.clone(),
   )?;
   let id = Uuid::new_v4().to_string();
   let now = Utc::now().to_rfc3339();
@@ -170,6 +174,7 @@ fn create_ledger_transaction_inner(state: State<'_, AppState>, input: CreateLedg
       )?;
     }
     apply_buy_item_assignment(&conn, &id, buy_item_id.as_deref())?;
+    apply_buy_group_assignment(&conn, &id, buy_item_group_id.as_deref())?;
   } else {
     resync_variable_cost_months(&conn, variable_cost_id.as_deref(), Some(input.date.as_str()))?;
   }
@@ -188,6 +193,7 @@ pub struct UpdateLedgerTransactionInput {
   pub variable_cost_id: Option<String>,
   pub fixed_cost_id: Option<String>,
   pub buy_item_id: Option<String>,
+  pub buy_item_group_id: Option<String>,
   pub icon: Option<String>,
   pub color: Option<String>,
   pub assign_similar_fixed_cost: Option<bool>,
@@ -233,11 +239,12 @@ fn update_ledger_transaction_inner(state: State<'_, AppState>, input: UpdateLedg
     ));
   }
   let amount_cents = normalize_ledger_amount(&input.kind, input.amount_cents);
-  let (variable_cost_id, fixed_cost_id, buy_item_id) = normalize_expense_category_ids(
+  let (variable_cost_id, fixed_cost_id, buy_item_id, buy_item_group_id) = normalize_expense_category_ids(
     &input.kind,
     input.variable_cost_id.clone(),
     input.fixed_cost_id.clone(),
     input.buy_item_id.clone(),
+    input.buy_item_group_id.clone(),
   )?;
   let icon = normalize_icon(input.icon, default_icon_for_kind(&input.kind));
   let color = normalize_color(input.color, default_color_for_kind(&input.kind));
@@ -270,10 +277,12 @@ fn update_ledger_transaction_inner(state: State<'_, AppState>, input: UpdateLedg
       )?;
     }
     apply_buy_item_assignment(&conn, &input.id, buy_item_id.as_deref())?;
+    apply_buy_group_assignment(&conn, &input.id, buy_item_group_id.as_deref())?;
   } else {
     clear_buy_assignment_for_transaction(&conn, &input.id)?;
+    clear_buy_group_assignment_for_transaction(&conn, &input.id)?;
     conn.execute(
-      "UPDATE ledger_transactions SET variable_cost_id = NULL, fixed_cost_id = NULL, buy_item_id = NULL WHERE id = ?1",
+      "UPDATE ledger_transactions SET variable_cost_id = NULL, fixed_cost_id = NULL, buy_item_id = NULL, buy_item_group_id = NULL WHERE id = ?1",
       params![input.id],
     )?;
     resync_variable_cost_months(&conn, old_vc_id.as_deref(), Some(old_date.as_str()))?;
@@ -297,13 +306,16 @@ fn delete_ledger_transaction_inner(state: State<'_, AppState>, id: String) -> Ap
   if kind == "transfer" {
     return Err(AppError::Invalid("Transfers bitte über Rückgängig entfernen".into()));
   }
-  let (date, vc_id, buy_id): (String, Option<String>, Option<String>) = conn.query_row(
-    "SELECT date, variable_cost_id, buy_item_id FROM ledger_transactions WHERE id = ?1",
+  let (date, vc_id, buy_id, group_id): (String, Option<String>, Option<String>, Option<String>) = conn.query_row(
+    "SELECT date, variable_cost_id, buy_item_id, buy_item_group_id FROM ledger_transactions WHERE id = ?1",
     params![id],
-    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
   )?;
   if let Some(ref bid) = buy_id {
     crate::buy_assignment::revert_buy_item(&conn, bid)?;
+  }
+  if let Some(ref gid) = group_id {
+    revert_buy_group(&conn, gid)?;
   }
   conn.execute("DELETE FROM ledger_transactions WHERE id = ?1", params![id])?;
   resync_variable_cost_months(&conn, vc_id.as_deref(), Some(date.as_str()))?;
@@ -319,6 +331,8 @@ pub struct CreateTransferInput {
   pub to_account_id: String,
   pub title: String,
   pub notes: Option<String>,
+  pub icon: Option<String>,
+  pub color: Option<String>,
 }
 
 #[tauri::command]
@@ -338,10 +352,12 @@ fn create_transfer_inner(state: State<'_, AppState>, input: CreateTransferInput)
   }
   let id = Uuid::new_v4().to_string();
   let now = Utc::now().to_rfc3339();
+  let icon = normalize_icon(input.icon, default_icon_for_kind("transfer"));
+  let color = normalize_color(input.color, default_color_for_kind("transfer"));
   let conn = state.conn.lock().unwrap();
   conn.execute(
-    "INSERT INTO ledger_transactions (id, date, amount_cents, account_id, from_account_id, to_account_id, kind, title, notes, source_id, internal_transfer, created_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5, 'transfer', ?6, ?7, NULL, 1, ?8)",
-    params![id, input.date, input.amount_cents, input.from_account_id, input.to_account_id, input.title, input.notes, now],
+    "INSERT INTO ledger_transactions (id, date, amount_cents, account_id, from_account_id, to_account_id, kind, title, notes, source_id, internal_transfer, icon, color, created_at) VALUES (?1, ?2, ?3, NULL, ?4, ?5, 'transfer', ?6, ?7, NULL, 1, ?8, ?9, ?10)",
+    params![id, input.date, input.amount_cents, input.from_account_id, input.to_account_id, input.title, input.notes, icon, color, now],
   )?;
   Ok(())
 }

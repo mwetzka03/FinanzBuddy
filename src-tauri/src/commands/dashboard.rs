@@ -5,7 +5,8 @@ use super::forecast_income::materialize_due_income_forecasts;
 use super::forecast_variable::finalize_all_variable_cost_months;
 use super::forecast_variable_events::{remaining_fixed_costs_cents, remaining_variable_costs_cents};
 use super::helpers::{
-  account_filter_scope, cached_stock_portfolio_cents_if_needed, iso_date, to_cmd_result, CmdResult,
+  account_balance_source, account_filter_scope, cached_stock_portfolio_cents_if_needed, iso_date,
+  to_cmd_result, CmdResult,
 };
 use super::prognostic::kontostand_total_cents;
 use crate::accounts::get_main_account_id;
@@ -13,7 +14,8 @@ use crate::calc_log::calc_log;
 use crate::dashboard_cache;
 use crate::dashboard_compute::{compute_dashboard_chain, compute_salary_period_chain, months_from_to, MonthPeriodInput};
 use crate::dashboard_flow::{
-  aggregate_liquid_flows, aggregate_period_flows, aggregate_real_period_flows, end_balance_from_start,
+  aggregate_all_accounts_card_flows, aggregate_liquid_flows, aggregate_period_flows, aggregate_real_period_flows,
+  end_balance_from_start,
 };
 use crate::dashboard_period::{current_salary_period, list_salary_periods, salary_period_dashboard};
 use crate::error::{AppError, AppResult};
@@ -407,13 +409,7 @@ fn compute_month_view(
     include_transfers,
   );
   let liquid_card_flows = if account_id.is_none() {
-    aggregate_liquid_flows(
-      &built.events,
-      &period_start,
-      &period_end,
-      &liquid_account_ids,
-      false,
-    )
+    aggregate_all_accounts_card_flows(&built.events, &period_start, &period_end)
   } else {
     period_flows
   };
@@ -438,7 +434,31 @@ fn compute_month_view(
     &as_of,
     include_transfers,
   );
-  let kontostand = start_balance_cents + real_flows_to_today.net_cents();
+  let is_depot_filter = match &account_id {
+    Some(aid) => account_balance_source(&conn, aid)? == "stock_portfolio",
+    None => false,
+  };
+  let use_depot_cost_basis = is_depot_filter && (!period_is_current || today.as_str() > period_end.as_str());
+  let kontostand_as_of_date = if is_depot_filter {
+    if period_is_current {
+      as_of.as_str()
+    } else {
+      period_end.as_str()
+    }
+  } else {
+    as_of.as_str()
+  };
+  let kontostand = if is_depot_filter {
+    kontostand_total_cents(
+      &conn,
+      kontostand_as_of_date,
+      &account_id,
+      stock_portfolio_cents,
+      use_depot_cost_basis,
+    )?
+  } else {
+    start_balance_cents + real_flows_to_today.net_cents()
+  };
 
   let prognose_end_balance = end_balance_from_start(start_balance_cents, &period_flows);
   let remaining_buys_cents: i64 = built
@@ -448,7 +468,9 @@ fn compute_month_view(
     .map(|ev| ev.amount_cents.abs())
     .sum();
 
-  let end_balance_cents = if period_is_current
+  let end_balance_cents = if is_depot_filter {
+    kontostand
+  } else if period_is_current
     && remaining_fixed == 0
     && remaining_variable == 0
     && remaining_buys_cents == 0

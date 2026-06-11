@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Account, BuyItem, FixedCost, IncomeForecast, IsoDate, IsoMonth, LedgerTransaction, VariableCost } from '../lib/types';
+import type { Account, BuyItem, BuyItemGroup, FixedCost, IncomeForecast, IsoDate, IsoMonth, LedgerTransaction, VariableCost } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { EntityIconBadge } from '../components/common/AppIcon';
 import { AmountTable } from '../components/data/AmountTable';
@@ -11,10 +11,11 @@ import { FixedCostHistoryModal } from '../components/transactions/FixedCostHisto
 import { formatDisplayDate, monthEndDate, monthStartDate, toIsoMonth } from '../lib/date';
 import {
   buildUnifiedEntries,
+  CHECKABLE_ENTRY_KINDS,
+  defaultCheckedEntryKinds,
   dueRuleShort,
-  ENTRY_KIND_FILTERS,
   entryAmountCentsForTable,
-  filterUnifiedEntries,
+  filterUnifiedEntriesByKinds,
   filterUnifiedEntriesByMonth,
   formatEntryAmount,
   kindFilterLabel,
@@ -23,12 +24,14 @@ import {
   type UnifiedEntry,
 } from '../lib/transactionList';
 import {
+  deleteBuyItem,
   deleteFixedCost,
   deleteIncomeForecast,
   deleteLedgerTransaction,
   deleteTransfer,
   getDashboardSettings,
   listAccounts,
+  listBuyItemGroups,
   listBuyItems,
   listFixedCosts,
   listIncomeForecasts,
@@ -41,6 +44,7 @@ import { useUi } from '../lib/ui';
 import { ListPanel } from '../components/layout/ListPanel';
 import { PageShell } from '../components/layout/PageShell';
 import { MonthInput } from '../components/DateInput';
+import { Checkbox } from '../components/common/Checkbox';
 import { EditIconButton } from '../components/EditIconButton';
 import { TrashIconButton } from '../components/TrashIconButton';
 import { useLocale } from '../i18n/LocaleProvider';
@@ -57,8 +61,8 @@ function isEditableLedgerKind(kind: string): boolean {
   return !['buy_apply', 'buy_planned', 'fixed_cost'].includes(kind);
 }
 
-function tableColumns(kindFilter: EntryKindFilter): string {
-  if (kindFilter === 'all') {
+function tableColumns(kindFilter: EntryKindFilter | 'multi'): string {
+  if (kindFilter === 'all' || kindFilter === 'multi') {
     return '48px 120px 120px minmax(200px, 2fr) 120px 72px';
   }
   if (kindFilter === 'expense') {
@@ -79,9 +83,10 @@ export function TransactionsPage() {
   const [variableCosts, setVariableCosts] = useState<VariableCost[]>([]);
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([]);
   const [buyItems, setBuyItems] = useState<BuyItem[]>([]);
+  const [buyItemGroups, setBuyItemGroups] = useState<BuyItemGroup[]>([]);
   const [incomeForecasts, setIncomeForecasts] = useState<IncomeForecast[]>([]);
   const [accountId, setAccountId] = useState<string>('');
-  const [kindFilter, setKindFilter] = useState<EntryKindFilter>('all');
+  const [kindChecks, setKindChecks] = useState<Set<EntryKindFilter>>(() => defaultCheckedEntryKinds());
   const [monthFilter, setMonthFilter] = useState<IsoMonth | 'all'>('all');
   const [ledgerRows, setLedgerRows] = useState<LedgerTransaction[]>([]);
   const [nextDatesByForecastId, setNextDatesByForecastId] = useState<Map<string, IsoDate[]>>(new Map());
@@ -105,6 +110,12 @@ export function TransactionsPage() {
   const fixedCostMap = useMemo(() => new Map(fixedCosts.map((c) => [c.id, c.name])), [fixedCosts]);
   const fixedCostById = useMemo(() => new Map(fixedCosts.map((c) => [c.id, c])), [fixedCosts]);
   const buyItemMap = useMemo(() => new Map(buyItems.map((b) => [b.id, b.name])), [buyItems]);
+  const buyItemById = useMemo(() => new Map(buyItems.map((b) => [b.id, b])), [buyItems]);
+  const buyItemGroupMap = useMemo(() => new Map(buyItemGroups.map((g) => [g.id, g.name])), [buyItemGroups]);
+  const buyItemGroupStyleMap = useMemo(
+    () => new Map(buyItemGroups.map((g) => [g.id, { icon: g.icon, color: g.color }])),
+    [buyItemGroups],
+  );
   const variableCostById = useMemo(() => new Map(variableCosts.map((c) => [c.id, c])), [variableCosts]);
   type TxSortKey = 'date' | 'kind' | 'title' | 'amount';
   const [sort, setSort] = useState<SortState<TxSortKey>>(null);
@@ -115,12 +126,16 @@ export function TransactionsPage() {
         ledger: ledgerRows,
         incomeForecasts,
         fixedCosts,
+        buyItems,
         accountId,
         mainAccountId,
         primaryIncomeForecastId,
         variableCostNames: variableCostMap,
         fixedCostNames: fixedCostMap,
         buyItemNames: buyItemMap,
+        buyItemGroupNames: buyItemGroupMap,
+        buyItemById,
+        buyItemGroupById: buyItemGroupStyleMap,
         nextDatesByForecastId,
         nextDatesByFixedCostId,
       }),
@@ -128,23 +143,29 @@ export function TransactionsPage() {
       ledgerRows,
       incomeForecasts,
       fixedCosts,
+      buyItems,
       accountId,
       mainAccountId,
       primaryIncomeForecastId,
       variableCostMap,
       fixedCostMap,
       buyItemMap,
+      buyItemGroupMap,
+      buyItemById,
+      buyItemGroupStyleMap,
       nextDatesByForecastId,
       nextDatesByFixedCostId,
     ],
   );
 
-  const tableCols = tableColumns(kindFilter);
+  const singleKindFilter =
+    kindChecks.size === 1 ? ([...kindChecks][0] as EntryKindFilter) : kindChecks.size === CHECKABLE_ENTRY_KINDS.length ? 'all' : 'multi';
+  const tableCols = tableColumns(singleKindFilter);
 
   const filteredRows = useMemo(() => {
-    const byKind = filterUnifiedEntries(unifiedRows, kindFilter);
+    const byKind = filterUnifiedEntriesByKinds(unifiedRows, kindChecks);
     return filterUnifiedEntriesByMonth(byKind, monthFilter);
-  }, [unifiedRows, kindFilter, monthFilter]);
+  }, [unifiedRows, kindChecks, monthFilter]);
 
   const sortedRows = useMemo(
     () =>
@@ -166,18 +187,20 @@ export function TransactionsPage() {
             start: monthStartDate(monthFilter),
             end: monthEndDate(monthFilter),
           };
-    const [ledger, forecasts, fixed, variables, buys] = await Promise.all([
+    const [ledger, forecasts, fixed, variables, buys, buyGroups] = await Promise.all([
       listLedgerTransactions(ledgerOpts),
       listIncomeForecasts(),
       listFixedCosts(),
       listVariableCosts(),
       listBuyItems(),
+      listBuyItemGroups(),
     ]);
     setLedgerRows(ledger);
     setIncomeForecasts(forecasts);
     setFixedCosts(fixed);
     setVariableCosts(variables);
     setBuyItems(buys);
+    setBuyItemGroups(buyGroups);
 
     const forecastDates = new Map<string, IsoDate[]>();
     await Promise.all(
@@ -203,6 +226,10 @@ export function TransactionsPage() {
     );
     setNextDatesByFixedCostId(fixedDates);
   }
+
+  useEffect(() => {
+    setKindChecks(defaultCheckedEntryKinds());
+  }, []);
 
   useEffect(() => {
     listAccounts()
@@ -241,12 +268,14 @@ export function TransactionsPage() {
       await deleteIncomeForecast(entry.incomeForecast.id);
     } else if (entry.source === 'expense_forecast' && entry.fixedCost) {
       await deleteFixedCost(entry.fixedCost.id);
+    } else if (entry.source === 'buy_forecast' && entry.buyItem) {
+      await deleteBuyItem(entry.buyItem.id);
     }
     await refresh();
   }
 
   function entryTitle(entry: UnifiedEntry): string {
-    if (entry.ledger) return ledgerRowTitle(entry.ledger, accountMap, fixedCostMap, variableCostMap, buyItemMap);
+    if (entry.ledger) return ledgerRowTitle(entry.ledger, accountMap, fixedCostMap, variableCostMap, buyItemMap, buyItemGroupMap);
     return entry.title;
   }
 
@@ -285,6 +314,17 @@ export function TransactionsPage() {
           <EditIconButton
             label={t('common.edit')}
             onClick={() => navigate('/fixkosten', { state: { editId: entry.fixedCost!.id } })}
+          />
+          <TrashIconButton label={t('common.delete')} onClick={() => onDeleteEntry(entry)} />
+        </>
+      );
+    }
+    if (entry.source === 'buy_forecast' && entry.buyItem) {
+      return (
+        <>
+          <EditIconButton
+            label={t('common.edit')}
+            onClick={() => navigate('/buy-liste')}
           />
           <TrashIconButton label={t('common.delete')} onClick={() => onDeleteEntry(entry)} />
         </>
@@ -334,16 +374,30 @@ export function TransactionsPage() {
     <PageShell title={t('transactions.title')} intro={t('transactions.intro')} error={error}>
       <div className="fh-transactions-toolbar">
         <DashboardAccountSelect accounts={ledgerAccounts} value={accountId} onChange={setAccountId} />
-        <label style={{ ...ui.field, width: '100%', maxWidth: 300, marginBottom: 0 }}>
+        <div style={{ ...ui.field, width: '100%', maxWidth: 520, marginBottom: 0 }}>
           <span style={ui.label}>{t('transactions.filterType')}</span>
-          <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value as EntryKindFilter)} style={ui.input}>
-            {ENTRY_KIND_FILTERS.map((filter) => (
-              <option key={filter} value={filter}>
-                {kindFilterLabel(filter, t)}
-              </option>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', marginTop: 6 }}>
+            {CHECKABLE_ENTRY_KINDS.map((kind) => (
+              <Checkbox
+                key={kind}
+                checked={kindChecks.has(kind)}
+                onChange={(checked) => {
+                  setKindChecks((prev) => {
+                    const next = new Set(prev);
+                    if (checked) {
+                      next.add(kind);
+                    } else if (next.size > 1) {
+                      next.delete(kind);
+                    }
+                    return next;
+                  });
+                }}
+              >
+                {kindFilterLabel(kind, t)}
+              </Checkbox>
             ))}
-          </select>
-        </label>
+          </div>
+        </div>
         <label style={{ ...ui.field, width: '100%', maxWidth: 220, marginBottom: 0 }}>
           <span style={ui.label}>{t('common.month')}</span>
           <select
@@ -379,8 +433,8 @@ export function TransactionsPage() {
             <SortableTh label={t('common.date')} sortKey="date" sort={sort} onSort={setSort} style={ui.thName} />
             <SortableTh label={t('common.type')} sortKey="kind" sort={sort} onSort={setSort} style={ui.thName} />
             <SortableTh label={t('transactions.titleField')} sortKey="title" sort={sort} onSort={setSort} style={ui.thName} />
-            {kindFilter === 'expense' ? <div>{t('common.category')}</div> : null}
-            {kindFilter === 'income_forecast' || kindFilter === 'expense_forecast' ? (
+            {singleKindFilter === 'expense' ? <div>{t('common.category')}</div> : null}
+            {singleKindFilter === 'income_forecast' || singleKindFilter === 'expense_forecast' ? (
               <>
                 <div>{t('common.rhythm')}</div>
                 <div>{t('common.due')}</div>
@@ -396,7 +450,7 @@ export function TransactionsPage() {
             sortedRows.map((entry) => (
               <div key={entry.id} style={{ ...ui.tableRow, gridTemplateColumns: tableCols }}>
                 <EntityIconBadge
-                  icon={entry.icon || DEFAULT_KIND_ICON[entry.displayKind] || 'target'}
+                  icon={entry.icon || DEFAULT_KIND_ICON[entry.displayKind] || 'repeat'}
                   color={entry.color || DEFAULT_KIND_COLOR[entry.displayKind] || '#6366f1'}
                   size={18}
                 />
@@ -406,12 +460,12 @@ export function TransactionsPage() {
                   {renderTitle(entry)}
                   {entry.notes ? <div style={ui.cellSub}>{entry.notes}</div> : null}
                 </div>
-                {kindFilter === 'expense' ? (
+                {singleKindFilter === 'expense' ? (
                   <div style={{ color: ui.colors.textMuted, fontSize: 13 }}>
                     {entry.categoryLabel ?? t('common.none')}
                   </div>
                 ) : null}
-                {kindFilter === 'income_forecast' || kindFilter === 'expense_forecast' ? (
+                {singleKindFilter === 'income_forecast' || singleKindFilter === 'expense_forecast' ? (
                   <>
                     <div>{entry.cadence ? t(`cadence.${entry.cadence}`) : '—'}</div>
                     <div style={{ fontSize: 13 }}>
@@ -455,6 +509,7 @@ export function TransactionsPage() {
         variableCosts={variableCosts}
         fixedCosts={fixedCosts}
         buyItems={buyItems}
+        buyItemGroups={buyItemGroups}
         incomeForecasts={incomeForecasts}
         onClose={() => setModalOpen(false)}
         onSaved={async () => {

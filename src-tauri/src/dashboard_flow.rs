@@ -134,6 +134,47 @@ pub fn aggregate_real_period_flows(
   totals
 }
 
+/// Einnahmen/Ausgaben-Kacheln bei „Alle Konten“ — alle realen Flows (wie Zwischensumme), ohne Umbuchungen/Prognosen.
+pub fn aggregate_all_accounts_card_flows(
+  events: &[TimelineEvent],
+  range_start: &str,
+  range_end: &str,
+) -> PeriodFlowTotals {
+  let mut totals = PeriodFlowTotals::default();
+  for ev in events {
+    if !event_in_range(&ev.date, range_start, range_end) {
+      continue;
+    }
+    if ev.r#type == "adjustment" {
+      continue;
+    }
+    if is_prognostic_flow_event(ev) {
+      continue;
+    }
+    if skips_flow_total(ev) {
+      continue;
+    }
+    if is_transfer_flow_event(ev) {
+      continue;
+    }
+    if ev.amount_cents > 0 {
+      totals.income_cents += ev.amount_cents;
+    } else if ev.amount_cents < 0 {
+      totals.expense_cents += ev.amount_cents.abs();
+    }
+  }
+  calc_log!(
+    "dashboard_flow",
+    "aggregate_all_accounts_card_flows",
+    "range={}..{}, income_cents={}, expense_cents={}",
+    range_start,
+    range_end,
+    totals.income_cents,
+    totals.expense_cents
+  );
+  totals
+}
+
 /// Liquide Mittel: Einnahmen/Ausgaben auf liquiden Konten (optional inkl. Transfer-Effekt).
 pub fn aggregate_liquid_flows(
   events: &[TimelineEvent],
@@ -147,7 +188,7 @@ pub fn aggregate_liquid_flows(
     if !event_in_range(&ev.date, range_start, range_end) {
       continue;
     }
-    if ev.r#type == "adjustment" || ev.r#type == "stock_purchase" {
+    if ev.r#type == "adjustment" {
       continue;
     }
     if skips_flow_total(ev) {
@@ -224,6 +265,7 @@ mod tests {
       fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
     }
   }
@@ -241,6 +283,7 @@ mod tests {
       fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
     }
   }
@@ -261,6 +304,7 @@ mod tests {
         fixed_cost_id: None,
         variable_cost_id: None,
         buy_item_id: None,
+      buy_item_group_id: None,
         notes: None,
       },
       ev("fixed_cost", "2026-05-10", -50000),
@@ -290,6 +334,7 @@ mod tests {
         fixed_cost_id: None,
         variable_cost_id: None,
         buy_item_id: None,
+      buy_item_group_id: None,
         notes: None,
       },
     ];
@@ -313,6 +358,7 @@ mod tests {
       fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
     }];
     let flows = aggregate_period_flows(&events, "2026-03-31", "2026-04-29", true);
@@ -335,6 +381,7 @@ mod tests {
         fixed_cost_id: None,
         variable_cost_id: None,
         buy_item_id: None,
+      buy_item_group_id: None,
         notes: None,
       },
     ];

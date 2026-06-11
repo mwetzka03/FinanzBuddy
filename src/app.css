@@ -1002,6 +1002,15 @@ label {
   border-radius: 10px;
 }
 
+.fh-form-readonly {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--fh-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--fh-bg-muted, #f1f5f9);
+  color: var(--fh-text, #0f172a);
+  font-size: 0.95rem;
+}
+
 .fh-form-label--disabled {
   opacity: 0.55;
 }
@@ -1130,9 +1139,9 @@ label {
 }
 
 .fh-loading-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 9999;
   display: flex;
   align-items: flex-start;
   justify-content: center;

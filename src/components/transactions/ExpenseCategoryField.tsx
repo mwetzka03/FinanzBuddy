@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { BuyItem, FixedCost, VariableCost } from '../../lib/types';
+import type { BuyItem, BuyItemGroup, FixedCost, VariableCost } from '../../lib/types';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { useUi } from '../../lib/ui';
 
-export type ExpenseCategoryKind = 'none' | 'variable' | 'fixed' | 'buy';
+export type ExpenseCategoryKind = 'none' | 'variable' | 'fixed' | 'buy' | 'buyGroup';
 
 export type ExpenseCategoryValue = {
   kind: ExpenseCategoryKind;
@@ -14,6 +14,7 @@ type ExpenseCategoryFieldProps = {
   variableCosts: VariableCost[];
   fixedCosts: FixedCost[];
   buyItems: BuyItem[];
+  buyItemGroups?: BuyItemGroup[];
   value: ExpenseCategoryValue;
   onChange: (value: ExpenseCategoryValue) => void;
   disabled?: boolean;
@@ -23,9 +24,11 @@ export function expenseCategoryFromLedger(
   variableCostId: string | null | undefined,
   fixedCostId: string | null | undefined,
   buyItemId?: string | null | undefined,
+  buyItemGroupId?: string | null | undefined,
 ): ExpenseCategoryValue {
   if (variableCostId) return { kind: 'variable', id: variableCostId };
   if (fixedCostId) return { kind: 'fixed', id: fixedCostId };
+  if (buyItemGroupId) return { kind: 'buyGroup', id: buyItemGroupId };
   if (buyItemId) return { kind: 'buy', id: buyItemId };
   return { kind: 'none', id: null };
 }
@@ -34,23 +37,28 @@ export function ledgerCategoryIds(value: ExpenseCategoryValue): {
   variableCostId: string | null;
   fixedCostId: string | null;
   buyItemId: string | null;
+  buyItemGroupId: string | null;
 } {
   if (value.kind === 'variable') {
-    return { variableCostId: value.id, fixedCostId: null, buyItemId: null };
+    return { variableCostId: value.id, fixedCostId: null, buyItemId: null, buyItemGroupId: null };
   }
   if (value.kind === 'fixed') {
-    return { variableCostId: null, fixedCostId: value.id, buyItemId: null };
+    return { variableCostId: null, fixedCostId: value.id, buyItemId: null, buyItemGroupId: null };
   }
   if (value.kind === 'buy') {
-    return { variableCostId: null, fixedCostId: null, buyItemId: value.id };
+    return { variableCostId: null, fixedCostId: null, buyItemId: value.id, buyItemGroupId: null };
   }
-  return { variableCostId: null, fixedCostId: null, buyItemId: null };
+  if (value.kind === 'buyGroup') {
+    return { variableCostId: null, fixedCostId: null, buyItemId: null, buyItemGroupId: value.id };
+  }
+  return { variableCostId: null, fixedCostId: null, buyItemId: null, buyItemGroupId: null };
 }
 
 export function ExpenseCategoryField({
   variableCosts,
   fixedCosts,
   buyItems,
+  buyItemGroups = [],
   value,
   onChange,
   disabled,
@@ -60,13 +68,22 @@ export function ExpenseCategoryField({
   const [query, setQuery] = useState('');
 
   const selectableBuyItems = useMemo(() => {
-    const parked = buyItems.filter((b) => b.status === 'parked');
+    const parked = buyItems.filter((b) => b.status === 'parked' && !b.groupId);
     if (value.kind === 'buy' && value.id && !parked.some((b) => b.id === value.id)) {
       const current = buyItems.find((b) => b.id === value.id);
       if (current) return [current, ...parked];
     }
     return parked;
   }, [buyItems, value]);
+
+  const selectableBuyGroups = useMemo(() => {
+    const withMembers = buyItemGroups.filter((g) => buyItems.some((b) => b.groupId === g.id && b.status === 'parked'));
+    if (value.kind === 'buyGroup' && value.id && !withMembers.some((g) => g.id === value.id)) {
+      const current = buyItemGroups.find((g) => g.id === value.id);
+      if (current) return [current, ...withMembers];
+    }
+    return withMembers;
+  }, [buyItemGroups, buyItems, value]);
 
   const selectedLabel = useMemo(() => {
     if (value.kind === 'variable' && value.id) {
@@ -78,8 +95,11 @@ export function ExpenseCategoryField({
     if (value.kind === 'buy' && value.id) {
       return buyItems.find((b) => b.id === value.id)?.name ?? '';
     }
+    if (value.kind === 'buyGroup' && value.id) {
+      return buyItemGroups.find((g) => g.id === value.id)?.name ?? '';
+    }
     return '';
-  }, [value, variableCosts, fixedCosts, buyItems]);
+  }, [value, variableCosts, fixedCosts, buyItems, buyItemGroups]);
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -95,8 +115,17 @@ export function ExpenseCategoryField({
       .filter((b) => !q || b.name.toLowerCase().includes(q))
       .slice(0, 8)
       .map((b) => ({ kind: 'buy' as const, id: b.id, label: b.name, group: t('transactions.categoryBuy') }));
-    return [...variable, ...fixed, ...buy];
-  }, [variableCosts, fixedCosts, selectableBuyItems, query, t]);
+    const buyGroup = selectableBuyGroups
+      .filter((g) => !q || g.name.toLowerCase().includes(q))
+      .slice(0, 8)
+      .map((g) => ({
+        kind: 'buyGroup' as const,
+        id: g.id,
+        label: g.name,
+        group: t('transactions.categoryBuyGroup'),
+      }));
+    return [...variable, ...fixed, ...buy, ...buyGroup];
+  }, [variableCosts, fixedCosts, selectableBuyItems, selectableBuyGroups, query, t]);
 
   function pick(kind: ExpenseCategoryKind, id: string, label: string) {
     if (kind === 'none') return;

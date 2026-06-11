@@ -98,8 +98,35 @@ pub(crate) fn push_depot_stock_purchase_events(
       fixed_cost_id: None,
       variable_cost_id: None,
       buy_item_id: None,
+      buy_item_group_id: None,
       notes: None,
     });
+  }
+  Ok(())
+}
+
+pub(crate) fn push_all_depot_stock_purchase_events(
+  conn: &rusqlite::Connection,
+  names: &std::collections::HashMap<String, String>,
+  range_start: &str,
+  range_end: &str,
+  events: &mut Vec<TimelineEvent>,
+) -> AppResult<()> {
+  let mut stmt = conn.prepare("SELECT id FROM accounts WHERE balance_source = 'stock_portfolio'")?;
+  let depot_ids = stmt
+    .query_map([], |r| r.get::<_, String>(0))?
+    .collect::<Result<Vec<_>, _>>()?;
+  for depot_id in depot_ids {
+    push_depot_stock_purchase_events(
+      conn,
+      names,
+      &depot_id,
+      range_start,
+      range_end,
+      events,
+      false,
+      &mut 0,
+    )?;
   }
   Ok(())
 }

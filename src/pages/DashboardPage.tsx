@@ -75,13 +75,29 @@ function costIdFromEventId(prefix: 'fixed_cost' | 'variable_cost', id: string): 
   return id.split(':')[1] ?? null;
 }
 
-function EventTitleCell({ ev }: { ev: TimelineEvent }) {
+function EventTitleCell({ ev, onGroupClick }: { ev: TimelineEvent; onGroupClick?: (groupId: string) => void }) {
   const ui = useUi();
   const navigate = useNavigate();
-  const subtitle = ev.notes?.trim();
+  const rawSubtitle = ev.notes?.trim();
+  const subtitle = rawSubtitle?.startsWith('buy_group:') ? undefined : rawSubtitle;
   const fixedCostId = ev.fixedCostId ?? costIdFromEventId('fixed_cost', ev.id);
   const variableCostId = ev.variableCostId ?? costIdFromEventId('variable_cost', ev.id);
 
+  if (ev.buyItemGroupId && onGroupClick) {
+    return (
+      <div style={ui.cellStack}>
+        <button
+          type="button"
+          className="fh-link-button"
+          style={ui.nameLink}
+          onClick={() => onGroupClick(ev.buyItemGroupId!)}
+        >
+          {ev.title}
+        </button>
+        {subtitle ? <div style={ui.cellSub}>{subtitle}</div> : null}
+      </div>
+    );
+  }
   if (fixedCostId) {
     return (
       <div style={ui.cellStack}>
@@ -89,7 +105,7 @@ function EventTitleCell({ ev }: { ev: TimelineEvent }) {
           type="button"
           className="fh-link-button"
           style={ui.nameLink}
-          onClick={() => navigate('/fixkosten')}
+          onClick={() => navigate('/fixkosten', { state: { editId: fixedCostId } })}
         >
           {ev.title}
         </button>
@@ -119,7 +135,7 @@ function EventTitleCell({ ev }: { ev: TimelineEvent }) {
           type="button"
           className="fh-link-button"
           style={ui.nameLink}
-          onClick={() => navigate('/einkaufszettel')}
+          onClick={() => navigate('/buy-liste')}
         >
           {ev.title}
         </button>
@@ -142,18 +158,22 @@ function EventsTable({
   events,
   filter = 'all',
   accountFilter = null,
+  isStockDepot = false,
+  onGroupClick,
 }: {
   events: MonthView['events'];
   filter?: DashboardEventFilter;
   accountFilter?: string | null;
+  isStockDepot?: boolean;
+  onGroupClick?: (groupId: string) => void;
 }) {
   const ui = useUi();
   const { t } = useLocale();
   type EventSortKey = 'date' | 'account' | 'title' | 'amount' | 'subtotal';
   const [sort, setSort] = useState<SortState<EventSortKey>>(null);
   const rows = useMemo(
-    () => dashboardEventsWithRunningSubtotals(events, filter, accountFilter),
-    [events, filter, accountFilter],
+    () => dashboardEventsWithRunningSubtotals(events, filter, accountFilter, isStockDepot),
+    [events, filter, accountFilter, isStockDepot],
   );
   const sortedRows = useMemo(
     () =>
@@ -193,7 +213,7 @@ function EventsTable({
             <div style={{ ...ui.tdMono, textAlign: 'left' }}>{formatDisplayDate(ev.date)}</div>
             <div style={{ ...ui.tdName, color: ui.colors.textMuted, fontSize: 13 }}>{ev.accountName ?? '—'}</div>
             <div style={ui.tdName}>
-              <EventTitleCell ev={ev} />
+              <EventTitleCell ev={ev} onGroupClick={onGroupClick} />
             </div>
             <TdAmount col="amount" amountCents={ev.amountCents} neutral={ev.type === 'transfer'}>
               {ev.type === 'transfer'
@@ -215,8 +235,13 @@ function EventsTable({
 export function DashboardPage() {
 
   const ui = useUi();
+  const navigate = useNavigate();
 
   const { t, locale } = useLocale();
+
+  const openBuyGroup = (groupId: string) => {
+    navigate('/buy-liste', { state: { groupId } });
+  };
 
   const [mode, setMode] = useState<'day' | 'month'>('month');
 
@@ -788,7 +813,7 @@ export function DashboardPage() {
 
             <h3 style={{ marginTop: 0 }}>{t('dashboard.events')}</h3>
 
-            <EventsTable events={data.events} accountFilter={accountId} />
+            <EventsTable events={data.events} accountFilter={accountId} isStockDepot={isStockDepot} onGroupClick={openBuyGroup} />
 
           </>
 
@@ -963,6 +988,8 @@ export function DashboardPage() {
               events={eventFilter === 'all' ? monthEvents : filteredEvents}
               filter={eventFilter}
               accountFilter={accountId}
+              isStockDepot={isStockDepot}
+              onGroupClick={openBuyGroup}
             />
 
           </>
@@ -989,7 +1016,7 @@ export function DashboardPage() {
 
             <h3 style={{ marginTop: 0 }}>{t('dashboard.eventsOnDay', { date: formatDisplayDate(dayData.date) })}</h3>
 
-            <EventsTable events={dayData.events} accountFilter={accountId} />
+            <EventsTable events={dayData.events} accountFilter={accountId} isStockDepot={isStockDepot} onGroupClick={openBuyGroup} />
 
           </>
 
@@ -1011,7 +1038,7 @@ export function DashboardPage() {
 
             <h3 style={{ marginTop: 0 }}>{t('dashboard.eventsOnDay', { date: formatDisplayDate(dayData.date) })}</h3>
 
-            <EventsTable events={dayData.events} accountFilter={accountId} />
+            <EventsTable events={dayData.events} accountFilter={accountId} isStockDepot={isStockDepot} onGroupClick={openBuyGroup} />
 
           </>
 

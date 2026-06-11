@@ -13,6 +13,7 @@ pub struct Account {
   pub parent_account_id: Option<Uuid>,
   pub iban: Option<String>,
   pub is_main: bool,
+  pub linked_ledger_account_id: Option<Uuid>,
   pub created_at: DateTime<Utc>,
 }
 
@@ -32,6 +33,7 @@ pub struct LedgerTransaction {
   pub variable_cost_id: Option<Uuid>,
   pub fixed_cost_id: Option<Uuid>,
   pub buy_item_id: Option<Uuid>,
+  pub buy_item_group_id: Option<Uuid>,
   pub icon: String,
   pub color: String,
   pub created_at: DateTime<Utc>,
@@ -67,6 +69,19 @@ pub struct BuyItem {
   pub planned_month: Option<String>, // YYYY-MM
   pub icon: String,
   pub color: String,
+  pub group_id: Option<Uuid>,
+  pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuyItemGroup {
+  pub id: Uuid,
+  pub name: String,
+  pub description: Option<String>,
+  pub planned_month: Option<String>,
+  pub icon: String,
+  pub color: String,
   pub created_at: DateTime<Utc>,
 }
 
@@ -83,6 +98,8 @@ pub struct IncomeForecast {
   pub end_charge_date: Option<String>,
   pub active: bool,
   pub account_id: String,
+  pub icon: String,
+  pub color: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,6 +188,9 @@ pub struct TimelineEvent {
   /// Einkaufszettel-Zuordnung bei gebuchten Ausgaben (Ledger).
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub buy_item_id: Option<String>,
+  /// Einkaufszettel-Gruppierung bei gebuchten Ausgaben (Ledger).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub buy_item_group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

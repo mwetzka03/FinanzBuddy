@@ -1,6 +1,45 @@
 use crate::commands::forecast_variable::ledger_tx_is_categorizable;
+use crate::commands::helpers::{normalize_color, normalize_icon};
 use crate::error::{AppError, AppResult};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
+
+pub fn buy_item_style(conn: &Connection, buy_item_id: &str) -> AppResult<(String, String)> {
+  let row: Option<(Option<String>, Option<String>)> = conn
+    .query_row(
+      "SELECT icon, color FROM buy_items WHERE id = ?1",
+      params![buy_item_id],
+      |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .optional()?;
+  let (icon, color) = row.unwrap_or((None, None));
+  Ok((
+    normalize_icon(icon, "shop"),
+    normalize_color(color, "#ec4899"),
+  ))
+}
+
+pub fn buy_item_group_style(conn: &Connection, group_id: &str) -> AppResult<(String, String)> {
+  let row: Option<(Option<String>, Option<String>)> = conn
+    .query_row(
+      "SELECT icon, color FROM buy_item_groups WHERE id = ?1",
+      params![group_id],
+      |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .optional()?;
+  let (icon, color) = row.unwrap_or((None, None));
+  Ok((
+    normalize_icon(icon, "shop"),
+    normalize_color(color, "#ec4899"),
+  ))
+}
+
+pub(crate) fn apply_buy_style_to_ledger(conn: &Connection, ledger_id: &str, icon: &str, color: &str) -> AppResult<()> {
+  conn.execute(
+    "UPDATE ledger_transactions SET icon = ?2, color = ?3 WHERE id = ?1",
+    params![ledger_id, icon, color],
+  )?;
+  Ok(())
+}
 
 fn validate_buy_item_id(conn: &Connection, buy_item_id: &str) -> AppResult<()> {
   let exists: i64 = conn.query_row(
@@ -102,13 +141,15 @@ pub fn apply_buy_item_assignment(
       params![bid],
     )?;
     conn.execute(
-      "UPDATE ledger_transactions SET buy_item_id = ?2, variable_cost_id = NULL, fixed_cost_id = NULL WHERE id = ?1",
+      "UPDATE ledger_transactions SET buy_item_id = ?2, variable_cost_id = NULL, fixed_cost_id = NULL, buy_item_group_id = NULL WHERE id = ?1",
       params![anchor_id, bid],
     )?;
     conn.execute(
       "UPDATE buy_items SET status = 'applied', applied_date = ?2 WHERE id = ?1",
       params![bid, date],
     )?;
+    let (icon, color) = buy_item_style(conn, bid)?;
+    apply_buy_style_to_ledger(conn, anchor_id, &icon, &color)?;
   } else {
     conn.execute(
       "UPDATE ledger_transactions SET buy_item_id = NULL WHERE id = ?1",

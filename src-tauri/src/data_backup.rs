@@ -22,6 +22,7 @@ const TABLE_NAMES: &[&str] = &[
   "balance_entries",
   "fixed_costs",
   "buy_items",
+  "buy_item_groups",
   "income_forecasts",
   "income_forecast_actuals",
   "variable_costs",

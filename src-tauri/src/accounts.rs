@@ -226,26 +226,6 @@ pub fn set_main_account_id(conn: &rusqlite::Connection, account_id: &str) -> App
 
 
 
-pub fn get_trade_republic_account_id(conn: &rusqlite::Connection) -> AppResult<String> {
-
-  conn
-
-    .query_row(
-
-      "SELECT id FROM accounts WHERE name LIKE 'TradeRepublic%' ORDER BY created_at ASC LIMIT 1",
-
-      [],
-
-      |r| r.get(0),
-
-    )
-
-    .map_err(|_| AppError::Invalid("Konto TradeRepublic nicht gefunden".into()))
-
-}
-
-
-
 pub fn migrate_main_account_setting(conn: &rusqlite::Connection) -> AppResult<()> {
 
   let existing: Option<String> = conn

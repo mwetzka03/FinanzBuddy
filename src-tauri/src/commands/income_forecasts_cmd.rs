@@ -1,5 +1,5 @@
 use super::forecast_income::materialize_due_income_forecasts;
-use super::helpers::{to_cmd_result, CmdResult};
+use super::helpers::{normalize_color, normalize_icon, to_cmd_result, CmdResult};
 use chrono::{Datelike, Utc};
 use rusqlite::OptionalExtension;
 use crate::accounts::get_main_account_id;
@@ -23,7 +23,7 @@ fn list_income_forecasts_inner(state: State<'_, AppState>) -> AppResult<Vec<Inco
   materialize_due_income_forecasts(&conn)?;
   let main_id = get_main_account_id(&conn)?;
   let mut stmt = conn.prepare(
-    "SELECT id, name, amount_cents, cadence, first_charge_date, COALESCE(due_rule,'calendar_day'), day_of_month, end_charge_date, COALESCE(active,1), COALESCE(account_id, ?1)
+    "SELECT id, name, amount_cents, cadence, first_charge_date, COALESCE(due_rule,'calendar_day'), day_of_month, end_charge_date, COALESCE(active,1), COALESCE(account_id, ?1), COALESCE(icon, 'banknote'), COALESCE(color, '#10b981')
      FROM income_forecasts ORDER BY first_charge_date DESC, name ASC",
   )?;
   let rows = stmt
@@ -39,6 +39,8 @@ fn list_income_forecasts_inner(state: State<'_, AppState>) -> AppResult<Vec<Inco
         end_charge_date: r.get(7)?,
         active: r.get::<_, i64>(8)? != 0,
         account_id: r.get(9)?,
+        icon: r.get(10)?,
+        color: r.get(11)?,
       })
     })?
     .collect::<Result<Vec<_>, _>>()?;
@@ -55,6 +57,8 @@ pub struct CreateIncomeForecastInput {
   pub due_rule: String,
   pub day_of_month: Option<i64>,
   pub end_charge_date: Option<String>,
+  pub icon: Option<String>,
+  pub color: Option<String>,
 }
 
 #[tauri::command]
@@ -90,10 +94,12 @@ fn create_income_forecast_inner(state: State<'_, AppState>, input: CreateIncomeF
     }
   });
   let id = Uuid::new_v4().to_string();
+  let icon = normalize_icon(input.icon, "banknote");
+  let color = normalize_color(input.color, "#10b981");
   let conn = state.conn.lock().unwrap();
   conn.execute(
-    "INSERT INTO income_forecasts (id, name, amount_cents, date, cadence, first_charge_date, due_rule, day_of_month, end_charge_date, active, ledger_transaction_id)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?4, ?6, ?7, ?8, 1, NULL)",
+    "INSERT INTO income_forecasts (id, name, amount_cents, date, cadence, first_charge_date, due_rule, day_of_month, end_charge_date, active, ledger_transaction_id, icon, color)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?4, ?6, ?7, ?8, 1, NULL, ?9, ?10)",
     params![
       id,
       input.name.trim(),
@@ -103,6 +109,8 @@ fn create_income_forecast_inner(state: State<'_, AppState>, input: CreateIncomeF
       input.due_rule,
       day_of_month,
       input.end_charge_date.filter(|s| !s.is_empty()),
+      icon,
+      color,
     ],
   )?;
   materialize_due_income_forecasts(&conn)?;
@@ -121,6 +129,8 @@ pub struct UpdateIncomeForecastInput {
   pub day_of_month: Option<i64>,
   pub end_charge_date: Option<String>,
   pub active: bool,
+  pub icon: Option<String>,
+  pub color: Option<String>,
 }
 
 #[tauri::command]
@@ -155,9 +165,11 @@ fn update_income_forecast_inner(state: State<'_, AppState>, input: UpdateIncomeF
       None
     }
   });
+  let icon_param = input.icon.map(|i| normalize_icon(Some(i), "banknote"));
+  let color_param = input.color.map(|c| normalize_color(Some(c), "#10b981"));
   let conn = state.conn.lock().unwrap();
   conn.execute(
-    "UPDATE income_forecasts SET name = ?2, amount_cents = ?3, date = ?4, cadence = ?5, first_charge_date = ?4, due_rule = ?6, day_of_month = ?7, end_charge_date = ?8, active = ?9 WHERE id = ?1",
+    "UPDATE income_forecasts SET name = ?2, amount_cents = ?3, date = ?4, cadence = ?5, first_charge_date = ?4, due_rule = ?6, day_of_month = ?7, end_charge_date = ?8, active = ?9, icon = COALESCE(?10, icon), color = COALESCE(?11, color) WHERE id = ?1",
     params![
       input.id,
       input.name.trim(),
@@ -168,6 +180,8 @@ fn update_income_forecast_inner(state: State<'_, AppState>, input: UpdateIncomeF
       day_of_month,
       input.end_charge_date.filter(|s| !s.is_empty()),
       if input.active { 1 } else { 0 },
+      icon_param,
+      color_param,
     ],
   )?;
   materialize_due_income_forecasts(&conn)?;

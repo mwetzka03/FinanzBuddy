@@ -1,4 +1,4 @@
-import type { Cadence, FixedCost, IncomeForecast, IsoDate, IsoMonth, LedgerTransaction } from './types';
+import type { BuyItem, Cadence, FixedCost, IncomeForecast, IsoDate, IsoMonth, LedgerTransaction } from './types';
 import { isoToday, monthEndDate, monthStartDate } from './date';
 import { formatEurFromCents, formatExpenseEurFromCents, formatIncomeEurFromCents, formatSignedEurFromCents } from './money';
 
@@ -21,7 +21,14 @@ export const ENTRY_KIND_FILTERS: EntryKindFilter[] = [
   'expense_forecast',
 ];
 
-export type UnifiedEntrySource = 'ledger' | 'income_forecast' | 'expense_forecast';
+/** Typen für die Mehrfach-Auswahl auf der Transaktionsseite (ohne „Alle“). */
+export const CHECKABLE_ENTRY_KINDS: EntryKindFilter[] = ENTRY_KIND_FILTERS.filter((k) => k !== 'all');
+
+export function defaultCheckedEntryKinds(): Set<EntryKindFilter> {
+  return new Set(CHECKABLE_ENTRY_KINDS);
+}
+
+export type UnifiedEntrySource = 'ledger' | 'income_forecast' | 'expense_forecast' | 'buy_forecast';
 
 export type UnifiedEntry = {
   id: string;
@@ -37,6 +44,7 @@ export type UnifiedEntry = {
   ledger?: LedgerTransaction;
   incomeForecast?: IncomeForecast;
   fixedCost?: FixedCost;
+  buyItem?: BuyItem;
   cadence?: Cadence;
   dueRule?: string;
   dayOfMonth?: number | null;
@@ -190,16 +198,30 @@ export function fixedCostForecastOccurrences(
   return dates;
 }
 
+function buyItemSortDate(item: BuyItem): IsoDate {
+  if (item.plannedMonth) return `${item.plannedMonth}-01` as IsoDate;
+  return isoToday();
+}
+
+function buyItemInMonth(item: BuyItem, month: IsoMonth): boolean {
+  if (!item.plannedMonth) return true;
+  return item.plannedMonth === month;
+}
+
 export function buildUnifiedEntries(input: {
   ledger: LedgerTransaction[];
   incomeForecasts: IncomeForecast[];
   fixedCosts: FixedCost[];
+  buyItems?: BuyItem[];
   accountId: string;
   mainAccountId: string;
   primaryIncomeForecastId?: string | null;
   variableCostNames: Map<string, string>;
   fixedCostNames: Map<string, string>;
   buyItemNames?: Map<string, string>;
+  buyItemGroupNames?: Map<string, string>;
+  buyItemById?: Map<string, BuyItem>;
+  buyItemGroupById?: Map<string, { icon: string; color: string }>;
   nextDatesByForecastId: Map<string, IsoDate[]>;
   nextDatesByFixedCostId: Map<string, IsoDate[]>;
 }): UnifiedEntry[] {
@@ -211,8 +233,26 @@ export function buildUnifiedEntries(input: {
       categoryLabel = input.variableCostNames.get(row.variableCostId) ?? null;
     } else if (row.fixedCostId) {
       categoryLabel = input.fixedCostNames.get(row.fixedCostId) ?? null;
+    } else if (row.buyItemGroupId) {
+      categoryLabel = input.buyItemGroupNames?.get(row.buyItemGroupId) ?? null;
     } else if (row.buyItemId) {
       categoryLabel = input.buyItemNames?.get(row.buyItemId) ?? null;
+    }
+
+    let icon = row.icon;
+    let color = row.color;
+    if (row.buyItemId) {
+      const buy = input.buyItemById?.get(row.buyItemId);
+      if (buy) {
+        icon = buy.icon;
+        color = buy.color;
+      }
+    } else if (row.buyItemGroupId) {
+      const groupStyle = input.buyItemGroupById?.get(row.buyItemGroupId);
+      if (groupStyle) {
+        icon = groupStyle.icon;
+        color = groupStyle.color;
+      }
     }
 
     items.push({
@@ -224,8 +264,8 @@ export function buildUnifiedEntries(input: {
       title: row.title,
       notes: row.notes,
       amountCents: row.amountCents,
-      icon: row.icon,
-      color: row.color,
+      icon,
+      color,
       ledger: row,
       categoryLabel,
     });
@@ -236,27 +276,45 @@ export function buildUnifiedEntries(input: {
     if (input.accountId && forecast.accountId !== input.accountId) continue;
     const nextDates = input.nextDatesByForecastId.get(forecast.id);
     const occurrences = incomeForecastOccurrences(forecast, nextDates);
-    for (const occDate of occurrences) {
-      const bookedTx = findPrimaryIncomeOccurrenceLedgerTx(forecast, occDate, input.ledger);
-      if (bookedTx) continue;
-      items.push({
-        id: `income_forecast:${forecast.id}:${occDate}`,
-        source: 'income_forecast',
-        displayKind: 'income_forecast',
-        sortDate: occDate,
-        date: occDate,
-        title: forecast.name,
-        notes: null,
-        amountCents: forecast.amountCents,
-        icon: 'banknote',
-        color: '#16a34a',
-        incomeForecast: forecast,
-        cadence: forecast.cadence,
-        dueRule: forecast.dueRule,
-        dayOfMonth: forecast.dayOfMonth,
-        nextDates,
-      });
-    }
+    const occDate = occurrences.find(
+      (date) => !findPrimaryIncomeOccurrenceLedgerTx(forecast, date, input.ledger),
+    );
+    if (!occDate) continue;
+    items.push({
+      id: `income_forecast:${forecast.id}:${occDate}`,
+      source: 'income_forecast',
+      displayKind: 'income_forecast',
+      sortDate: occDate,
+      date: occDate,
+      title: forecast.name,
+      notes: null,
+      amountCents: forecast.amountCents,
+      icon: forecast.icon,
+      color: forecast.color,
+      incomeForecast: forecast,
+      cadence: forecast.cadence,
+      dueRule: forecast.dueRule,
+      dayOfMonth: forecast.dayOfMonth,
+      nextDates,
+    });
+  }
+
+  for (const item of input.buyItems ?? []) {
+    if (item.status !== 'parked') continue;
+    const sortDate = buyItemSortDate(item);
+    items.push({
+      id: `buy_forecast:${item.id}`,
+      source: 'buy_forecast',
+      displayKind: 'expense_forecast',
+      sortDate,
+      date: sortDate,
+      title: item.name,
+      notes: item.description,
+      amountCents: item.amountCents,
+      icon: item.icon,
+      color: item.color,
+      buyItem: item,
+    });
   }
 
   for (const fc of input.fixedCosts) {
@@ -264,26 +322,25 @@ export function buildUnifiedEntries(input: {
     if (input.accountId && fc.accountId !== input.accountId) continue;
     const nextDates = input.nextDatesByFixedCostId.get(fc.id);
     const occurrences = fixedCostForecastOccurrences(fc, nextDates);
-    for (const occDate of occurrences) {
-      if (isFixedCostOccurrenceBooked(fc, occDate, input.ledger)) continue;
-      items.push({
-        id: `expense_forecast:${fc.id}:${occDate}`,
-        source: 'expense_forecast',
-        displayKind: 'expense_forecast',
-        sortDate: occDate,
-        date: occDate,
-        title: fc.name,
-        notes: fc.notes,
-        amountCents: fc.amountCents,
-        icon: fc.icon,
-        color: fc.color,
-        fixedCost: fc,
-        cadence: fc.cadence,
-        dueRule: fc.dueRule,
-        dayOfMonth: fc.dayOfMonth,
-        nextDates,
-      });
-    }
+    const occDate = occurrences.find((date) => !isFixedCostOccurrenceBooked(fc, date, input.ledger));
+    if (!occDate) continue;
+    items.push({
+      id: `expense_forecast:${fc.id}:${occDate}`,
+      source: 'expense_forecast',
+      displayKind: 'expense_forecast',
+      sortDate: occDate,
+      date: occDate,
+      title: fc.name,
+      notes: fc.notes,
+      amountCents: fc.amountCents,
+      icon: fc.icon,
+      color: fc.color,
+      fixedCost: fc,
+      cadence: fc.cadence,
+      dueRule: fc.dueRule,
+      dayOfMonth: fc.dayOfMonth,
+      nextDates,
+    });
   }
 
   items.sort((a, b) => b.sortDate.localeCompare(a.sortDate) || a.title.localeCompare(b.title));
@@ -301,11 +358,25 @@ export function filterUnifiedEntries(items: UnifiedEntry[], kindFilter: EntryKin
   return items.filter((e) => e.source === 'ledger' && e.displayKind === kindFilter);
 }
 
+export function filterUnifiedEntriesByKinds(items: UnifiedEntry[], kinds: Set<EntryKindFilter>): UnifiedEntry[] {
+  if (kinds.size === 0) return [];
+  if (kinds.size === CHECKABLE_ENTRY_KINDS.length) return items;
+  return items.filter((e) => {
+    if (e.source === 'buy_forecast') {
+      return kinds.has('expense_forecast');
+    }
+    return kinds.has(e.displayKind as EntryKindFilter);
+  });
+}
+
 export function filterUnifiedEntriesByMonth(items: UnifiedEntry[], month: IsoMonth | 'all'): UnifiedEntry[] {
   if (month === 'all') return items;
   const start = monthStartDate(month);
   const end = monthEndDate(month);
   return items.filter((entry) => {
+    if (entry.source === 'buy_forecast' && entry.buyItem) {
+      return buyItemInMonth(entry.buyItem, month);
+    }
     if (!entry.date) return false;
     return entry.date >= start && entry.date <= end;
   });
@@ -343,12 +414,16 @@ export function ledgerRowTitle(
   fixedCostNames?: Map<string, string>,
   variableCostNames?: Map<string, string>,
   buyItemNames?: Map<string, string>,
+  buyItemGroupNames?: Map<string, string>,
 ): string {
   if (row.kind === 'expense' && row.variableCostId) {
     return variableCostNames?.get(row.variableCostId) ?? row.title;
   }
   if (row.kind === 'expense' && row.fixedCostId) {
     return fixedCostNames?.get(row.fixedCostId) ?? row.title;
+  }
+  if (row.kind === 'expense' && row.buyItemGroupId) {
+    return buyItemGroupNames?.get(row.buyItemGroupId) ?? row.title;
   }
   if (row.kind === 'expense' && row.buyItemId) {
     return buyItemNames?.get(row.buyItemId) ?? row.title;

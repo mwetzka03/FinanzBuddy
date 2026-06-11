@@ -19,6 +19,7 @@ pub struct CreateAccountInput {
   pub parent_account_id: Option<String>,
   pub iban: Option<String>,
   pub balance_source: Option<String>,
+  pub linked_ledger_account_id: Option<String>,
 }
 
 #[tauri::command]
@@ -30,7 +31,7 @@ fn list_accounts_inner(state: State<'_, AppState>) -> AppResult<Vec<Account>> {
   let conn = state.conn.lock().unwrap();
   let main_id = crate::accounts::get_main_account_id(&conn)?;
   let mut stmt = conn.prepare(
-    "SELECT id, name, is_liquid, COALESCE(balance_source, 'ledger'), COALESCE(account_kind, 'standard'), parent_account_id, iban, created_at FROM accounts ORDER BY name ASC",
+    "SELECT id, name, is_liquid, COALESCE(balance_source, 'ledger'), COALESCE(account_kind, 'standard'), parent_account_id, iban, linked_ledger_account_id, created_at FROM accounts ORDER BY name ASC",
   )?;
   let rows = stmt
     .query_map([], |r| {
@@ -47,7 +48,9 @@ fn list_accounts_inner(state: State<'_, AppState>) -> AppResult<Vec<Account>> {
         account_kind,
         parent_raw.and_then(|p| Uuid::parse_str(p.as_str()).ok()),
         r.get::<_, Option<String>>(6)?,
-        chrono::DateTime::parse_from_rfc3339(r.get::<_, String>(7)?.as_str())
+        r.get::<_, Option<String>>(7)?
+          .and_then(|p| Uuid::parse_str(p.as_str()).ok()),
+        chrono::DateTime::parse_from_rfc3339(r.get::<_, String>(8)?.as_str())
           .unwrap()
           .with_timezone(&Utc),
         id_str,
@@ -57,7 +60,7 @@ fn list_accounts_inner(state: State<'_, AppState>) -> AppResult<Vec<Account>> {
   Ok(
     rows
       .into_iter()
-      .map(|(id, name, is_liquid, balance_source, account_kind, parent_account_id, iban, created_at, id_str)| {
+      .map(|(id, name, is_liquid, balance_source, account_kind, parent_account_id, iban, linked_ledger_account_id, created_at, id_str)| {
         Account {
           id,
           name,
@@ -67,6 +70,7 @@ fn list_accounts_inner(state: State<'_, AppState>) -> AppResult<Vec<Account>> {
           parent_account_id,
           iban,
           is_main: id_str == main_id,
+          linked_ledger_account_id,
           created_at,
         }
       })
@@ -85,33 +89,58 @@ fn create_account_inner(state: State<'_, AppState>, input: CreateAccountInput) -
   }
   let id = Uuid::new_v4().to_string();
   let now = Utc::now().to_rfc3339();
-  let balance_source = input
-    .balance_source
-    .as_deref()
-    .unwrap_or("ledger")
-    .trim();
-  if balance_source != "ledger" && balance_source != "stock_portfolio" {
-    return Err(AppError::Invalid(
-      "balanceSource must be ledger or stock_portfolio".into(),
-    ));
-  }
   let account_kind = input
     .account_kind
     .as_deref()
     .unwrap_or("standard")
     .trim()
     .to_string();
+  let is_depot = account_kind == "depot";
+  let balance_source = if is_depot {
+    "stock_portfolio".to_string()
+  } else {
+    input
+      .balance_source
+      .as_deref()
+      .unwrap_or("ledger")
+      .trim()
+      .to_string()
+  };
+  if balance_source != "ledger" && balance_source != "stock_portfolio" {
+    return Err(AppError::Invalid(
+      "balanceSource must be ledger or stock_portfolio".into(),
+    ));
+  }
+  let linked_ledger = input
+    .linked_ledger_account_id
+    .as_ref()
+    .map(|s| s.trim())
+    .filter(|s| !s.is_empty());
+  if is_depot && linked_ledger.is_none() {
+    return Err(AppError::Invalid("linkedLedgerAccountId required for depot".into()));
+  }
   let conn = state.conn.lock().unwrap();
+  if let Some(linked_id) = linked_ledger {
+    let valid: i64 = conn.query_row(
+      "SELECT COUNT(*) FROM accounts WHERE id = ?1 AND COALESCE(balance_source, 'ledger') = 'ledger' AND COALESCE(account_kind, 'standard') != 'depot'",
+      params![linked_id],
+      |r| r.get(0),
+    )?;
+    if valid == 0 {
+      return Err(AppError::Invalid("linked ledger account invalid".into()));
+    }
+  }
   conn.execute(
-    "INSERT INTO accounts (id, name, is_liquid, balance_source, account_kind, parent_account_id, iban, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+    "INSERT INTO accounts (id, name, is_liquid, balance_source, account_kind, parent_account_id, iban, linked_ledger_account_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
     params![
       id,
       input.name,
-      if input.is_liquid { 1 } else { 0 },
+      if is_depot { 0 } else if input.is_liquid { 1 } else { 0 },
       balance_source,
-      account_kind,
+      if is_depot { "depot" } else { account_kind.as_str() },
       input.parent_account_id,
-      input.iban,
+      if is_depot { None::<String> } else { input.iban.clone() },
+      linked_ledger,
       now
     ],
   )?;
@@ -138,6 +167,56 @@ fn update_account_inner(state: State<'_, AppState>, input: UpdateAccountInput) -
   let n = conn.execute(
     "UPDATE accounts SET name = ?2 WHERE id = ?1",
     params![input.id, input.name.trim()],
+  )?;
+  if n == 0 {
+    return Err(AppError::Invalid("account not found".into()));
+  }
+  Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetDepotLinkedLedgerInput {
+  pub id: String,
+  pub linked_ledger_account_id: String,
+}
+
+#[tauri::command]
+pub fn set_depot_linked_ledger_account(
+  state: State<'_, AppState>,
+  input: SetDepotLinkedLedgerInput,
+) -> CmdResult<()> {
+  to_cmd_result(set_depot_linked_ledger_account_inner(state, input))
+}
+
+fn set_depot_linked_ledger_account_inner(
+  state: State<'_, AppState>,
+  input: SetDepotLinkedLedgerInput,
+) -> AppResult<()> {
+  let linked = input.linked_ledger_account_id.trim();
+  if linked.is_empty() {
+    return Err(AppError::Invalid("linkedLedgerAccountId required".into()));
+  }
+  let conn = state.conn.lock().unwrap();
+  let (balance_source, account_kind): (String, String) = conn.query_row(
+    "SELECT COALESCE(balance_source, 'ledger'), COALESCE(account_kind, 'standard') FROM accounts WHERE id = ?1",
+    params![input.id],
+    |r| Ok((r.get(0)?, r.get(1)?)),
+  )?;
+  if balance_source != "stock_portfolio" && account_kind != "depot" {
+    return Err(AppError::Invalid("only depot accounts can be linked".into()));
+  }
+  let valid: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM accounts WHERE id = ?1 AND COALESCE(balance_source, 'ledger') = 'ledger' AND COALESCE(account_kind, 'standard') != 'depot'",
+    params![linked],
+    |r| r.get(0),
+  )?;
+  if valid == 0 {
+    return Err(AppError::Invalid("linked ledger account invalid".into()));
+  }
+  let n = conn.execute(
+    "UPDATE accounts SET linked_ledger_account_id = ?2 WHERE id = ?1",
+    params![input.id, linked],
   )?;
   if n == 0 {
     return Err(AppError::Invalid("account not found".into()));

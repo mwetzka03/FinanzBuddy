@@ -1,6 +1,7 @@
 mod accounts;
 mod bank_import;
 mod buy_assignment;
+mod buy_group_assignment;
 mod calc_log;
 mod commands;
 mod cost_assignment;
@@ -45,6 +46,7 @@ fn main() {
       commands::accounts_cmd::set_main_account,
       commands::accounts_cmd::set_account_liquid,
       commands::accounts_cmd::set_account_balance_source,
+      commands::accounts_cmd::set_depot_linked_ledger_account,
       commands::ledger::list_ledger_transactions,
       commands::ledger::create_ledger_transaction,
       commands::ledger::create_transfer,
@@ -57,11 +59,16 @@ fn main() {
       commands::fixed_costs::delete_fixed_cost,
       commands::fixed_costs::preview_fixed_cost,
       commands::buy_items::list_buy_items,
+      commands::buy_items::list_buy_item_groups,
       commands::buy_items::create_buy_item,
+      commands::buy_items::create_buy_item_group,
       commands::buy_items::update_buy_item,
+      commands::buy_items::update_buy_item_group,
       commands::buy_items::apply_buy_item,
+      commands::buy_items::apply_buy_item_group,
       commands::buy_items::unapply_buy_item,
       commands::buy_items::delete_buy_item,
+      commands::buy_items::delete_buy_item_group,
       commands::income_forecasts_cmd::list_income_forecasts,
       commands::income_forecasts_cmd::create_income_forecast,
       commands::income_forecasts_cmd::update_income_forecast,
@@ -111,6 +118,8 @@ fn main() {
       stocks::search_stock_suggestions,
       stocks::create_stock_holding,
       stocks::update_stock_holding,
+      stocks::update_stock_lot,
+      stocks::sell_stock_holding,
       stocks::delete_stock_holding,
       stocks::get_stock_position_detail,
       stocks::get_stock_chart,

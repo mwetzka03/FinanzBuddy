@@ -35,14 +35,14 @@ import {
   ShoppingBag,
   Store,
   Sun,
-  Target,
   TrendingUp,
-  Trophy,
+  Tv,
   Utensils,
+  Waves,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
-import { BeerIcon, CigaretteIcon, TentIcon } from './customIcons';
+import { BeerIcon, CigaretteIcon, GrillIcon, TentIcon } from './customIcons';
 
 export const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
   // Health & fitness
@@ -56,6 +56,7 @@ export const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
   { name: 'coffee', icon: Coffee },
   { name: 'beer', icon: BeerIcon },
   { name: 'cigarette', icon: CigaretteIcon },
+  { name: 'grill', icon: GrillIcon },
   // Home & shopping
   { name: 'home', icon: Home },
   { name: 'shop', icon: ShoppingBag },
@@ -70,6 +71,7 @@ export const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
   { name: 'sun', icon: Sun },
   { name: 'moon', icon: Moon },
   { name: 'cloud', icon: Cloud },
+  { name: 'wave', icon: Waves },
   // Finance
   { name: 'banknote', icon: Banknote },
   { name: 'landmark', icon: Landmark },
@@ -89,9 +91,8 @@ export const ICON_OPTIONS: { name: string; icon: LucideIcon }[] = [
   { name: 'palette', icon: Palette },
   { name: 'book', icon: BookOpen },
   { name: 'gift', icon: Gift },
-  { name: 'trophy', icon: Trophy },
   { name: 'party', icon: PartyPopper },
-  { name: 'target', icon: Target },
+  { name: 'tv', icon: Tv },
   // Utilities
   { name: 'bell', icon: Bell },
   { name: 'zap', icon: Zap },
@@ -107,29 +108,31 @@ export const DEPRECATED_ICON_ALIASES: Record<string, string> = {
   flame: 'zap',
   brain: 'lightbulb',
   cleaning: 'home',
-  award: 'trophy',
-  medal: 'trophy',
-  crown: 'trophy',
-  star: 'target',
+  award: 'party',
+  medal: 'party',
+  crown: 'party',
+  trophy: 'party',
+  star: 'repeat',
+  target: 'repeat',
   sparkles: 'party',
   smile: 'party',
   wallet: 'repeat',
   coins: 'banknote',
-  users: 'target',
+  users: 'repeat',
   flower: 'leaf',
   tree: 'leaf',
-  rocket: 'target',
-  scissors: 'target',
+  rocket: 'repeat',
+  scissors: 'repeat',
 };
 
 export function resolveIconName(name: string | null | undefined): string {
-  if (!name) return 'target';
+  if (!name) return 'repeat';
   if (iconMap[name]) return name;
-  return DEPRECATED_ICON_ALIASES[name] ?? 'target';
+  return DEPRECATED_ICON_ALIASES[name] ?? 'repeat';
 }
 
 export function getIcon(name: string): LucideIcon {
-  return iconMap[resolveIconName(name)] ?? Target;
+  return iconMap[resolveIconName(name)] ?? Repeat;
 }
 
 export const COLOR_OPTIONS = [
@@ -178,8 +181,10 @@ export const DEFAULT_KIND_ICON: Record<string, string> = {
   fixed_cost: 'calendar',
   buy_apply: 'shop',
   buy_planned: 'shop',
-  adjustment: 'target',
+  adjustment: 'list',
   forecast: 'trending',
+  income_forecast: 'banknote',
+  expense_forecast: 'calendar',
 };
 
 export const DEFAULT_KIND_COLOR: Record<string, string> = {
@@ -191,4 +196,6 @@ export const DEFAULT_KIND_COLOR: Record<string, string> = {
   buy_planned: '#ec4899',
   adjustment: '#64748b',
   forecast: '#3b82f6',
+  income_forecast: '#10b981',
+  expense_forecast: '#8b5cf6',
 };

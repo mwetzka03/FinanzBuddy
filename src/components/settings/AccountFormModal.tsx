@@ -3,7 +3,7 @@ import type { Account, AccountKind } from '../../lib/types';
 import { effectiveAccountKind, isDepotAccount, normalizeIbanInput } from '../../lib/accounts';
 import { Checkbox } from '../common/Checkbox';
 import { Modal } from '../common/Modal';
-import { createAccount, updateAccount } from '../../tauri/api';
+import { createAccount, setDepotLinkedLedgerAccount, updateAccount } from '../../tauri/api';
 import { useLocale } from '../../i18n/LocaleProvider';
 
 type AccountFormMode = 'create' | 'edit';
@@ -31,8 +31,13 @@ export function AccountFormModal({
   const [isLiquid, setIsLiquid] = useState(true);
   const [accountKind, setAccountKind] = useState<AccountKind>('standard');
   const [parentAccountId, setParentAccountId] = useState('');
+  const [linkedLedgerAccountId, setLinkedLedgerAccountId] = useState('');
 
   const isDepot = mode === 'edit' && account ? isDepotAccount(account) : accountKind === 'depot';
+  const ledgerAccounts = useMemo(
+    () => allAccounts.filter((a) => !isDepotAccount(a) && effectiveAccountKind(a) !== 'depot'),
+    [allAccounts],
+  );
   const oberspartopfAccounts = useMemo(
     () => allAccounts.filter((a) => effectiveAccountKind(a) === 'oberspartopf' && a.id !== account?.id),
     [allAccounts, account?.id],
@@ -46,6 +51,7 @@ export function AccountFormModal({
       setIsLiquid(account.isLiquid);
       setAccountKind(effectiveAccountKind(account));
       setParentAccountId(account.parentAccountId ?? '');
+      setLinkedLedgerAccountId(account.linkedLedgerAccountId ?? '');
       return;
     }
     setName('');
@@ -53,6 +59,7 @@ export function AccountFormModal({
     setIsLiquid(true);
     setAccountKind('standard');
     setParentAccountId('');
+    setLinkedLedgerAccountId('');
   }, [open, mode, account]);
 
   useEffect(() => {
@@ -63,6 +70,10 @@ export function AccountFormModal({
 
   async function save() {
     if (!name.trim()) return;
+    if (isDepot && !linkedLedgerAccountId) {
+      onError(t('accounts.linkedLedgerRequired'));
+      return;
+    }
     onError(null);
     try {
       const normalizedIban = iban.trim() ? normalizeIbanInput(iban.trim()) : null;
@@ -75,6 +86,9 @@ export function AccountFormModal({
           accountKind: isDepotAccount(account) ? undefined : accountKind,
           parentAccountId: accountKind === 'spartopf' ? parentAccountId || null : null,
         });
+        if (isDepot && linkedLedgerAccountId && linkedLedgerAccountId !== (account.linkedLedgerAccountId ?? '')) {
+          await setDepotLinkedLedgerAccount({ id: account.id, linkedLedgerAccountId });
+        }
       } else {
         await createAccount({
           name: name.trim(),
@@ -82,6 +96,7 @@ export function AccountFormModal({
           accountKind,
           parentAccountId: accountKind === 'spartopf' && parentAccountId ? parentAccountId : null,
           iban: normalizedIban,
+          linkedLedgerAccountId: isDepot ? linkedLedgerAccountId : null,
         });
       }
       await onSaved();
@@ -147,6 +162,20 @@ export function AccountFormModal({
             <span className="fh-form-hint">{t('accounts.parentOberspartopfHint')}</span>
           </label>
         ) : null}
+        {isDepot ? (
+          <label>
+            {t('accounts.linkedLedgerAccount')}
+            <select value={linkedLedgerAccountId} onChange={(e) => setLinkedLedgerAccountId(e.target.value)}>
+              <option value="">{t('common.none')}</option>
+              {ledgerAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            <span className="fh-form-hint">{t('accounts.linkedLedgerAccountHint')}</span>
+          </label>
+        ) : null}
         {!isDepot ? (
           <Checkbox checked={isLiquid} onChange={setIsLiquid}>
             {t('accounts.liquid')}
@@ -157,7 +186,7 @@ export function AccountFormModal({
             {t('common.cancel')}
           </button>
           <div className="fh-form-actions-right">
-            <button type="button" className="fh-btn primary" onClick={save} disabled={!name.trim()}>
+            <button type="button" className="fh-btn primary" onClick={save} disabled={!name.trim() || (isDepot && !linkedLedgerAccountId)}>
               {submitLabel}
             </button>
           </div>
