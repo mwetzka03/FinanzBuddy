@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Account, FixedCost, LedgerTransaction } from '../../lib/types';
 import { Modal } from '../common/Modal';
 import { AmountTable } from '../data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../data/tableSort';
 import { TdAmount } from '../data/AmountCells';
 import { TrashIconButton } from '../TrashIconButton';
@@ -39,15 +40,23 @@ export function FixedCostHistoryModal({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!fixedCost) return null;
+  const history = useMemo(
+    () => (fixedCost ? ledgerEntriesForFixedCost(fixedCost.id, ledger) : []),
+    [fixedCost, ledger],
+  );
+  const sortedHistory = useMemo(
+    () =>
+      sortByState(history, sort, {
+        date: (tx) => tx.date,
+        title: (tx) => `${tx.title} ${tx.notes ?? ''}`,
+        account: (tx) => accountMap.get(tx.accountId ?? '') ?? '',
+        amount: (tx) => Math.abs(tx.amountCents),
+      }),
+    [history, sort, accountMap],
+  );
+  const pagination = useTablePagination(sortedHistory);
 
-  const history = ledgerEntriesForFixedCost(fixedCost.id, ledger);
-  const sortedHistory = sortByState(history, sort, {
-    date: (tx) => tx.date,
-    title: (tx) => `${tx.title} ${tx.notes ?? ''}`,
-    account: (tx) => accountMap.get(tx.accountId ?? '') ?? '',
-    amount: (tx) => Math.abs(tx.amountCents),
-  });
+  if (!fixedCost) return null;
 
   async function removeAssignment(tx: LedgerTransaction) {
     setError(null);
@@ -67,7 +76,7 @@ export function FixedCostHistoryModal({
       <p style={{ ...ui.sectionHint, marginTop: 0 }}>{t('fixedCosts.historyIntro')}</p>
       {error ? <p style={{ color: ui.colors.amountNegative, marginTop: 0 }}>{error}</p> : null}
       <AmountTable minWidth={720}>
-        <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
+        <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
           <SortableTh label={t('common.date')} sortKey="date" sort={sort} onSort={setSort} />
           <SortableTh label={t('transactions.bookingText')} sortKey="title" sort={sort} onSort={setSort} />
           <SortableTh label={t('transactions.accountLabel')} sortKey="account" sort={sort} onSort={setSort} />
@@ -77,14 +86,21 @@ export function FixedCostHistoryModal({
             sort={sort}
             onSort={setSort}
             style={ui.thAmount}
-            align="right"
+            align="center"
           />
           <div />
         </div>
+        <TablePaginationBar
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          totalItems={pagination.totalItems}
+          pageSize={pagination.pageSize}
+          onPageChange={pagination.setPage}
+        />
         {history.length === 0 ? (
           <div style={ui.emptyRow}>{t('fixedCosts.historyEmpty')}</div>
         ) : (
-          sortedHistory.map((tx) => (
+          pagination.pageItems.map((tx) => (
             <div key={tx.id} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
               <div style={ui.tdMono}>{formatDisplayDate(tx.date)}</div>
               <div style={ui.cellStack}>

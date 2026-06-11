@@ -4,6 +4,7 @@ import type { DebtContactDetail, DebtDirection, IsoDate } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import { TdAmount } from '../components/data/AmountCells';
 import { formatDisplayDate, isoToday } from '../lib/date';
@@ -65,6 +66,7 @@ export function DebtDetailPage() {
       }),
     [detail, sort, t],
   );
+  const pagination = useTablePagination(sortedTransactions);
 
   if (!detail) {
     return <div style={{ color: ui.colors.textMuted }}>{t('common.loading')}</div>;
@@ -105,7 +107,7 @@ export function DebtDetailPage() {
     >
       <ListPanel hint={t('debts.detailListHint')}>
         <AmountTable minWidth={640}>
-          <div style={{ ...ui.tableHead, gridTemplateColumns: TX_TABLE_COLS }}>
+          <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: TX_TABLE_COLS }}>
             <SortableTh label={t('common.date')} sortKey="date" sort={sort} onSort={setSort} />
             <SortableTh label={t('debts.kind')} sortKey="kind" sort={sort} onSort={setSort} />
             <SortableTh label={t('common.title')} sortKey="title" sort={sort} onSort={setSort} style={ui.thName} />
@@ -115,14 +117,21 @@ export function DebtDetailPage() {
               sort={sort}
               onSort={setSort}
               style={ui.thAmount}
-              align="right"
+              align="center"
             />
             <div />
           </div>
+          <TablePaginationBar
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+          />
           {detail.transactions.length === 0 ? (
             <div style={ui.emptyRow}>{t('debts.noEntries')}</div>
           ) : (
-            sortedTransactions.map((tx) => {
+            pagination.pageItems.map((tx) => {
               const signed = tx.direction === 'owed_to_me' ? tx.amountCents : -Math.abs(tx.amountCents);
               return (
                 <div key={tx.id} style={{ ...ui.tableRow, gridTemplateColumns: TX_TABLE_COLS }}>

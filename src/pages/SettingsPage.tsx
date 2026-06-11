@@ -1,4 +1,5 @@
-import { Languages, Moon, Settings2, Sun, Terminal } from 'lucide-react';
+import { Languages, LayoutPanelLeft, Moon, Settings2, Sun, Terminal } from 'lucide-react';
+import { useNavLayout, type NavLayout } from '../lib/layoutPreference';
 import { DevTerminal } from '../components/common/DevTerminal';
 import { AccountsSettingsPanel } from '../components/settings/AccountsSettingsPanel';
 import { SetupAwareBankImportPanel } from '../components/settings/SetupAwareBankImportPanel';
@@ -13,6 +14,7 @@ export function SettingsPage() {
   const { t, locale, setLocale } = useLocale();
   const { mode, setMode } = useTheme();
   const { enabled: devModeEnabled, setEnabled: setDevModeEnabled } = useDeveloperMode();
+  const { layout: navLayout, setLayout: setNavLayout } = useNavLayout();
 
   return (
     <PageShell title={t('settings.title')} intro={t('settings.subtitle')}>
@@ -61,6 +63,28 @@ export function SettingsPage() {
           </div>
         </article>
 
+        <article className="fh-panel fh-settings-pref fh-settings-grid-nav">
+          <header className="fh-panel-head">
+            <LayoutPanelLeft size={18} aria-hidden />
+            <h2>{t('settings.navigation.title')}</h2>
+          </header>
+          <p className="fh-panel-desc">{t('settings.navigation.desc')}</p>
+          <div className="fh-settings-pref-actions">
+            <div className="fh-segment stretch" role="group" aria-label={t('settings.navigation.title')}>
+              {(['topbar', 'sidebar'] as NavLayout[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={navLayout === value ? 'active' : ''}
+                  onClick={() => setNavLayout(value)}
+                >
+                  {value === 'topbar' ? t('settings.navigation.topbar') : t('settings.navigation.sidebar')}
+                </button>
+              ))}
+            </div>
+          </div>
+        </article>
+
         <article className="fh-panel fh-settings-pref fh-settings-grid-dev">
           <header className="fh-panel-head">
             <Terminal size={18} aria-hidden />
@@ -87,15 +111,6 @@ export function SettingsPage() {
           </div>
         </article>
 
-        <article className="fh-panel fh-settings-pref fh-settings-grid-about">
-          <header className="fh-panel-head">
-            <Settings2 size={18} aria-hidden />
-            <h2>{t('settings.about.title')}</h2>
-          </header>
-          <p className="fh-panel-desc">{t('settings.about.desc')}</p>
-          <p className="fh-settings-about-credit">{t('settings.about.credit')}</p>
-        </article>
-
         <div className="fh-settings-grid-data">
           <DataManagementPanel embedded />
         </div>
@@ -103,6 +118,15 @@ export function SettingsPage() {
         <div className="fh-settings-grid-bank">
           <SetupAwareBankImportPanel embedded />
         </div>
+
+        <article className="fh-panel fh-settings-pref fh-settings-grid-about fh-settings-about-compact">
+          <header className="fh-panel-head">
+            <Settings2 size={18} aria-hidden />
+            <h2>{t('settings.about.title')}</h2>
+          </header>
+          <p className="fh-panel-desc">{t('settings.about.desc')}</p>
+          <p className="fh-settings-about-credit">{t('settings.about.credit')}</p>
+        </article>
       </div>
 
       <AccountsSettingsPanel />

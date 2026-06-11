@@ -4,6 +4,7 @@ import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Modal } from '../components/common/Modal';
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
 import { DataGrid, DataGridRow } from '../components/data/DataGrid';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { DetailLink } from '../components/DetailLink';
 import { ListPanel } from '../components/layout/ListPanel';
 import { PageShell } from '../components/layout/PageShell';
@@ -25,6 +26,7 @@ export function DebtsPage() {
   const { error, setError, run } = usePageRequest();
   const [rows, setRows] = useState<DebtContactSummary[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const pagination = useTablePagination(rows);
 
   const refresh = useCallback(async () => {
     setRows(await listDebtContacts());
@@ -65,7 +67,14 @@ export function DebtsPage() {
             </>
           }
         >
-          {rows.map((r) => (
+          <TablePaginationBar
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+          />
+          {pagination.pageItems.map((r) => (
             <DataGridRow key={r.id} columns={TABLE_COLS} className="fh-data-grid__row">
               <div style={ui.cellStack}>
                 <div style={ui.tdName}>

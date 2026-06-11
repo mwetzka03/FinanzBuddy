@@ -5,6 +5,7 @@ import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Checkbox } from '../components/common/Checkbox';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import { TdAmount } from '../components/data/AmountCells';
 import { AccountFormModal } from '../components/settings/AccountFormModal';
@@ -53,6 +54,8 @@ export function AccountsPage() {
       }),
     [transfers, transferSort, accountMap],
   );
+  const accountsPagination = useTablePagination(treeRows);
+  const transfersPagination = useTablePagination(sortedTransfers);
 
   async function refresh() {
     const [accounts, ledger] = await Promise.all([listAccounts(), listLedgerTransactions({})]);
@@ -104,15 +107,22 @@ export function AccountsPage() {
         </label>
         <div style={ui.tableScroll}>
           <div style={ui.table}>
-            <div style={{ ...ui.tableHead, gridTemplateColumns: ACCOUNT_COLS }}>
+            <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: ACCOUNT_COLS }}>
               <div style={ui.thName}>{t('common.name')}</div>
               <div>{t('accounts.accountKind')}</div>
               <div />
             </div>
+            <TablePaginationBar
+              page={accountsPagination.page}
+              totalPages={accountsPagination.totalPages}
+              totalItems={accountsPagination.totalItems}
+              pageSize={accountsPagination.pageSize}
+              onPageChange={accountsPagination.setPage}
+            />
             {rows.length === 0 ? (
               <div style={ui.emptyRow}>{t('common.noAccountsYet')}</div>
             ) : (
-            treeRows.map(({ account: a, depth }) => (
+            accountsPagination.pageItems.map(({ account: a, depth }) => (
               <div key={a.id} style={{ ...ui.tableRow, gridTemplateColumns: ACCOUNT_COLS }}>
                 <div style={{ ...ui.cellStack, paddingLeft: depth * 18 }}>
                   <span>
@@ -136,7 +146,7 @@ export function AccountsPage() {
 
       <ListPanel title={t('accounts.transferHistory')} hint={t('accounts.transferHint')}>
         <AmountTable>
-          <div style={{ ...ui.tableHead, gridTemplateColumns: TRANSFER_COLS }}>
+          <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: TRANSFER_COLS }}>
             <SortableTh label={t('common.date')} sortKey="date" sort={transferSort} onSort={setTransferSort} />
             <SortableTh label={t('common.from')} sortKey="from" sort={transferSort} onSort={setTransferSort} />
             <SortableTh label={t('common.to')} sortKey="to" sort={transferSort} onSort={setTransferSort} />
@@ -146,14 +156,21 @@ export function AccountsPage() {
               sort={transferSort}
               onSort={setTransferSort}
               style={ui.thAmount}
-              align="right"
+              align="center"
             />
             <div />
           </div>
+          <TablePaginationBar
+            page={transfersPagination.page}
+            totalPages={transfersPagination.totalPages}
+            totalItems={transfersPagination.totalItems}
+            pageSize={transfersPagination.pageSize}
+            onPageChange={transfersPagination.setPage}
+          />
           {transfers.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.noTransfers')}</div>
           ) : (
-            sortedTransfers.map((tx) => (
+            transfersPagination.pageItems.map((tx) => (
               <div key={tx.id} style={{ ...ui.tableRow, gridTemplateColumns: TRANSFER_COLS }}>
                 <div style={ui.tdMono}>{formatDisplayDate(tx.date)}</div>
                 <div style={ui.tdCenter}>{accountMap.get(tx.fromAccountId ?? '') ?? t('common.none')}</div>

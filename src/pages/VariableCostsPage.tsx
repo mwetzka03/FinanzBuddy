@@ -4,6 +4,7 @@ import { AddEntryButton } from '../components/common/AddEntryButton';
 import { ColorPicker, EntityIconBadge, IconPicker } from '../components/common/AppIcon';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import { TdAmount } from '../components/data/AmountCells';
 import { VariableCostDetailModal } from '../components/variableCosts/VariableCostDetailModal';
@@ -34,6 +35,7 @@ export function VariableCostsPage() {
       }),
     [rows, sort],
   );
+  const pagination = useTablePagination(sortedRows);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -74,7 +76,7 @@ export function VariableCostsPage() {
     >
       <ListPanel hint={t('variableCosts.listHint')}>
         <AmountTable>
-          <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
+          <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
             <div />
             <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
             <SortableTh
@@ -83,7 +85,7 @@ export function VariableCostsPage() {
               sort={sort}
               onSort={setSort}
               style={ui.thAmount}
-              align="right"
+              align="center"
             />
             <SortableTh
               label={t('variableCosts.actual')}
@@ -91,14 +93,21 @@ export function VariableCostsPage() {
               sort={sort}
               onSort={setSort}
               style={ui.thAmount}
-              align="right"
+              align="center"
             />
             <div />
           </div>
+          <TablePaginationBar
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+          />
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.none')}</div>
           ) : (
-            sortedRows.map((r) => (
+            pagination.pageItems.map((r) => (
               <div key={r.id} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                 <div style={ui.cellStack}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

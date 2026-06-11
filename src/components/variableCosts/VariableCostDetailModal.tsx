@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { IsoMonth, VariableCostDetail } from '../../lib/types';
 import { Modal } from '../common/Modal';
 import { TdAmount } from '../data/AmountCells';
+import { useTablePagination, TablePaginationBar } from '../data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../data/tableSort';
 import {
   VARIABLE_COSTS_START_MONTH,
@@ -59,6 +60,7 @@ export function VariableCostDetailModal({ open, costId, onClose }: Props) {
       }),
     [months, sort, detail, drafts],
   );
+  const pagination = useTablePagination(sortedMonths);
 
   useEffect(() => {
     if (!open || !costId) {
@@ -119,7 +121,7 @@ export function VariableCostDetailModal({ open, costId, onClose }: Props) {
             <h3 style={{ marginTop: 0 }}>Monatsübersicht</h3>
             <div style={ui.tableScroll}>
               <div style={{ ...ui.table, minWidth: 640 }}>
-                <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
+                <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
                   <SortableTh label="Monat" sortKey="month" sort={sort} onSort={setSort} style={ui.thName} />
                   <SortableTh
                     label="Prognose"
@@ -127,7 +129,7 @@ export function VariableCostDetailModal({ open, costId, onClose }: Props) {
                     sort={sort}
                     onSort={setSort}
                     style={ui.thAmount}
-                    align="right"
+                    align="center"
                   />
                   <SortableTh
                     label="Budget"
@@ -135,7 +137,7 @@ export function VariableCostDetailModal({ open, costId, onClose }: Props) {
                     sort={sort}
                     onSort={setSort}
                     style={ui.thAmount}
-                    align="right"
+                    align="center"
                   />
                   <SortableTh
                     label="Tatsächlich"
@@ -143,11 +145,18 @@ export function VariableCostDetailModal({ open, costId, onClose }: Props) {
                     sort={sort}
                     onSort={setSort}
                     style={ui.thAmount}
-                    align="right"
+                    align="center"
                   />
                   <div />
                 </div>
-                {sortedMonths.map((month) => (
+                <TablePaginationBar
+                  page={pagination.page}
+                  totalPages={pagination.totalPages}
+                  totalItems={pagination.totalItems}
+                  pageSize={pagination.pageSize}
+                  onPageChange={pagination.setPage}
+                />
+                {pagination.pageItems.map((month) => (
                   <div key={month} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                     <div style={ui.tdName}>
                       <div>{formatDisplayMonth(month)}</div>

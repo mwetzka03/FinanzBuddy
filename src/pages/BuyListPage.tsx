@@ -7,6 +7,7 @@ import { Checkbox } from '../components/common/Checkbox';
 import { ColorPicker, EntityIconBadge, IconPicker } from '../components/common/AppIcon';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import { TdAmount } from '../components/data/AmountCells';
 import { formatDisplayDate, formatDisplayMonth, toIsoMonth } from '../lib/date';
@@ -103,6 +104,7 @@ export function BuyListPage() {
       }),
     [listRows, sort],
   );
+  const pagination = useTablePagination(sortedRows);
 
   async function refresh() {
     try {
@@ -220,7 +222,7 @@ export function BuyListPage() {
     >
       <ListPanel hint={t('buyList.listHint')}>
         <AmountTable>
-          <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
+          <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
             <div />
             <SortableTh label="Real" sortKey="status" sort={sort} onSort={setSort} style={ui.thName} />
             <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
@@ -230,25 +232,32 @@ export function BuyListPage() {
               sort={sort}
               onSort={setSort}
               style={ui.thAmount}
-              align="right"
+              align="center"
             />
             <SortableTh label={t('common.month')} sortKey="month" sort={sort} onSort={setSort} style={ui.thMono} />
             <div />
           </div>
+          <TablePaginationBar
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+          />
           {sortedRows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.none')}</div>
           ) : (
-            sortedRows.map((r) => {
+            pagination.pageItems.map((r) => {
               if (r.kind === 'group') {
                 const { group, amountCents, allApplied } = r;
                 return (
                   <div
                     key={`group-${group.id}`}
+                    className="fh-table-row"
                     style={{
                       ...ui.tableRow,
+                      ...ui.tableRowAccent(group.color),
                       gridTemplateColumns: TABLE_COLS,
-                      borderLeft: `4px solid ${group.color}`,
-                      background: `color-mix(in srgb, ${group.color} 12%, ${ui.colors.bgCard})`,
                     }}
                   >
                     <EntityIconBadge icon={group.icon} color={group.color} size={20} />
@@ -287,7 +296,7 @@ export function BuyListPage() {
 
               const item = r.item;
               return (
-                <div key={item.id} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
+                <div key={item.id} className="fh-table-row" style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                   <EntityIconBadge icon={item.icon} color={item.color} size={20} />
                   <div style={ui.tdReal}>
                     <Checkbox

@@ -5,6 +5,7 @@ import { accountKindLabel, buildAccountTreeRows, isMainAccountCandidate } from '
 import { AddEntryButton } from '../common/AddEntryButton';
 import { AccountFormModal } from './AccountFormModal';
 import { listAccounts, setMainAccount } from '../../tauri/api';
+import { useTablePagination, TablePaginationBar } from '../data/tablePagination';
 import { useUi } from '../../lib/ui';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { EditIconButton } from '../EditIconButton';
@@ -20,6 +21,7 @@ export function AccountsSettingsPanel() {
   const [editAccount, setEditAccount] = useState<Account | null>(null);
 
   const treeRows = useMemo(() => buildAccountTreeRows(rows), [rows]);
+  const pagination = useTablePagination(treeRows);
   const mainAccountCandidates = useMemo(() => rows.filter(isMainAccountCandidate), [rows]);
   const mainAccountId = useMemo(() => rows.find((a) => a.isMain)?.id ?? '', [rows]);
 
@@ -64,16 +66,23 @@ export function AccountsSettingsPanel() {
 
       <div style={ui.tableScroll}>
         <div style={ui.table}>
-          <div style={{ ...ui.tableHead, gridTemplateColumns: ACCOUNT_COLS }}>
+          <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: ACCOUNT_COLS }}>
             <div>{t('common.name')}</div>
             <div>{t('accounts.accountKind')}</div>
             <div>{t('accounts.liquid')}</div>
             <div />
           </div>
+          <TablePaginationBar
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+          />
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.noAccountsYet')}</div>
           ) : (
-            treeRows.map(({ account: a, depth }) => (
+            pagination.pageItems.map(({ account: a, depth }) => (
               <div key={a.id} style={{ ...ui.tableRow, gridTemplateColumns: ACCOUNT_COLS }}>
                 <div style={{ ...ui.cellStack, paddingLeft: depth * 18 }}>
                   <span>

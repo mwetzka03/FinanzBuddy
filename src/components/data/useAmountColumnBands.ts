@@ -7,9 +7,8 @@ export type AmountBandRect = {
   height: number;
 };
 
-/** Extra space around measured amount cells so the band does not hug the text. */
-const BAND_PAD_X = 16;
-const BAND_PAD_Y = 14;
+/** Minimal horizontal padding around the widest amount text in the band. */
+const BAND_PAD_X = 3;
 
 export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
   const [bands, setBands] = useState<AmountBandRect[]>([]);
@@ -22,49 +21,44 @@ export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
       const tableEl = tableRef.current;
       if (!tableEl) return;
 
+      const cells = tableEl.querySelectorAll<HTMLElement>('.fh-table-row [data-amount-col]');
+      if (cells.length === 0) {
+        setBands([]);
+        return;
+      }
+
       const tableRect = tableEl.getBoundingClientRect();
-      const seenCols = new Set<string>();
-      const next: AmountBandRect[] = [];
 
-      tableEl.querySelectorAll<HTMLElement>('[data-amount-col]:not([data-amount-header])').forEach((marker) => {
-        const colIndex = marker.dataset.amountCol;
-        if (!colIndex || seenCols.has(colIndex)) return;
-        seenCols.add(colIndex);
+      let minLeft = Infinity;
+      let maxRight = -Infinity;
+      let minTop = Infinity;
+      let maxBottom = -Infinity;
 
-        const cells = tableEl.querySelectorAll<HTMLElement>(
-          `[data-amount-col="${colIndex}"]:not([data-amount-header])`,
-        );
-        if (cells.length === 0) return;
+      cells.forEach((cell) => {
+        const rect = cell.getBoundingClientRect();
+        minLeft = Math.min(minLeft, rect.left);
+        maxRight = Math.max(maxRight, rect.right);
+        minTop = Math.min(minTop, rect.top);
+        maxBottom = Math.max(maxBottom, rect.bottom);
+      });
 
-        let minLeft = Infinity;
-        let maxRight = -Infinity;
-        let minTop = Infinity;
-        let maxBottom = -Infinity;
+      if (minLeft === Infinity || minTop === Infinity) {
+        setBands([]);
+        return;
+      }
 
-        cells.forEach((cell) => {
-          const rect = cell.getBoundingClientRect();
-          minLeft = Math.min(minLeft, rect.left);
-          maxRight = Math.max(maxRight, rect.right);
-          minTop = Math.min(minTop, rect.top);
-          maxBottom = Math.max(maxBottom, rect.bottom);
-        });
+      const left = Math.max(0, minLeft - tableRect.left - BAND_PAD_X);
+      const right = Math.min(tableRect.width, maxRight - tableRect.left + BAND_PAD_X);
+      const top = Math.max(0, minTop - tableRect.top);
 
-        if (minLeft === Infinity) return;
-
-        const left = Math.max(0, minLeft - tableRect.left - BAND_PAD_X);
-        const top = Math.max(0, minTop - tableRect.top - BAND_PAD_Y);
-        const right = Math.min(tableRect.width, maxRight - tableRect.left + BAND_PAD_X);
-        const bottom = Math.min(tableRect.height, maxBottom - tableRect.top + BAND_PAD_Y);
-
-        next.push({
+      setBands([
+        {
           left,
           top,
           width: Math.max(0, right - left),
-          height: Math.max(0, bottom - top),
-        });
-      });
-
-      setBands(next);
+          height: Math.max(0, maxBottom - minTop),
+        },
+      ]);
     }
 
     measure();

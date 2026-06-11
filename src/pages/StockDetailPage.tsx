@@ -20,6 +20,7 @@ import { Modal } from '../components/common/Modal';
 import { DateInput } from '../components/DateInput';
 import { EditIconButton } from '../components/EditIconButton';
 import { TrashIconButton } from '../components/TrashIconButton';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import type { IsoDate } from '../lib/types';
 
 const CHART_RANGES: { id: StockChartRange; label: string }[] = [
@@ -120,6 +121,9 @@ export function StockDetailPage() {
     if (!h.depotAccountId) return null;
     return { name: h.name, symbol: h.symbol, depotAccountId: h.depotAccountId };
   }, [detail]);
+
+  const lots = detail?.lots ?? [];
+  const lotsPagination = useTablePagination(lots);
 
   async function onDeleteLot(lotId: string) {
     if (!id) return;
@@ -274,7 +278,7 @@ export function StockDetailPage() {
         ) : (
           <div style={ui.tableScroll}>
             <div style={{ ...ui.table, minWidth: 720 }}>
-              <div style={{ ...ui.tableHead, gridTemplateColumns: LOT_COLS }}>
+              <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: LOT_COLS }}>
                 <div style={ui.thName}>#</div>
                 <div>{t('stocks.buyDate')}</div>
                 <div>{t('stocks.shares')}</div>
@@ -283,10 +287,17 @@ export function StockDetailPage() {
                 <div>{t('stocks.table.vsBuy')}</div>
                 <div />
               </div>
-              {detail.lots.map((row, idx) => (
+              <TablePaginationBar
+                page={lotsPagination.page}
+                totalPages={lotsPagination.totalPages}
+                totalItems={lotsPagination.totalItems}
+                pageSize={lotsPagination.pageSize}
+                onPageChange={lotsPagination.setPage}
+              />
+              {lotsPagination.pageItems.map((row, idx) => (
                 <div key={row.lot.id} style={{ ...ui.tableRow, gridTemplateColumns: LOT_COLS }}>
                   <div style={{ ...ui.tdName, fontWeight: 600 }}>
-                    {t('stocks.lotLabel', { n: idx + 1 })}
+                    {t('stocks.lotLabel', { n: (lotsPagination.page - 1) * lotsPagination.pageSize + idx + 1 })}
                     {row.lot.isTransfer ? <span className="fh-transfer-badge">{t('stocks.transferBadge')}</span> : null}
                   </div>
                   <div style={{ ...ui.tdMono, fontSize: 13 }}>{formatDisplayDate(row.lot.buyDate)}</div>

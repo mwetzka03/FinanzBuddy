@@ -4,6 +4,7 @@ import type { Account, BuyItem, BuyItemGroup, FixedCost, IncomeForecast, IsoDate
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { EntityIconBadge } from '../components/common/AppIcon';
 import { AmountTable } from '../components/data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
 import { TransactionEntryModal } from '../components/transactions/TransactionEntryModal';
@@ -40,6 +41,7 @@ import {
   previewFixedCost,
   previewIncomeForecast,
 } from '../tauri/api';
+import { stockAccentColor } from '../lib/tableAccent';
 import { useUi } from '../lib/ui';
 import { ListPanel } from '../components/layout/ListPanel';
 import { PageShell } from '../components/layout/PageShell';
@@ -177,6 +179,7 @@ export function TransactionsPage() {
       }),
     [filteredRows, sort],
   );
+  const pagination = useTablePagination(sortedRows);
 
   async function refresh() {
     const ledgerOpts =
@@ -302,7 +305,7 @@ export function TransactionsPage() {
         <>
           <EditIconButton
             label={t('common.edit')}
-            onClick={() => navigate(`/einnahmen/prognose/${entry.incomeForecast!.id}`)}
+            onClick={() => navigate(`/transaktionen/prognose/${entry.incomeForecast!.id}`)}
           />
           <TrashIconButton label={t('common.delete')} onClick={() => onDeleteEntry(entry)} />
         </>
@@ -428,7 +431,7 @@ export function TransactionsPage() {
 
       <ListPanel title={t('transactions.history')} hint={t('transactions.historyHint')}>
         <AmountTable>
-          <div style={{ ...ui.tableHead, gridTemplateColumns: tableCols }}>
+          <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: tableCols }}>
             <div />
             <SortableTh label={t('common.date')} sortKey="date" sort={sort} onSort={setSort} style={ui.thName} />
             <SortableTh label={t('common.type')} sortKey="kind" sort={sort} onSort={setSort} style={ui.thName} />
@@ -441,14 +444,31 @@ export function TransactionsPage() {
                 <div>{t('common.nextDates')}</div>
               </>
             ) : null}
-            <SortableTh label={t('common.amount')} sortKey="amount" sort={sort} onSort={setSort} style={ui.thAmount} align="right" />
+            <SortableTh label={t('common.amount')} sortKey="amount" sort={sort} onSort={setSort} style={ui.thAmount} align="center" />
             <div />
           </div>
+          <TablePaginationBar
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+          />
           {sortedRows.length === 0 ? (
             <div style={{ padding: 12, color: ui.colors.textMuted }}>{t('transactions.empty')}</div>
           ) : (
-            sortedRows.map((entry) => (
-              <div key={entry.id} style={{ ...ui.tableRow, gridTemplateColumns: tableCols }}>
+            pagination.pageItems.map((entry) => {
+              const accent = stockAccentColor(entry);
+              return (
+              <div
+                key={entry.id}
+                className="fh-table-row"
+                style={{
+                  ...ui.tableRow,
+                  ...(accent ? ui.tableRowAccent(accent) : {}),
+                  gridTemplateColumns: tableCols,
+                }}
+              >
                 <EntityIconBadge
                   icon={entry.icon || DEFAULT_KIND_ICON[entry.displayKind] || 'repeat'}
                   color={entry.color || DEFAULT_KIND_COLOR[entry.displayKind] || '#6366f1'}
@@ -487,7 +507,8 @@ export function TransactionsPage() {
                 </TdAmount>
                 <div style={ui.tdActions}>{renderActions(entry)}</div>
               </div>
-            ))
+              );
+            })
           )}
         </AmountTable>
       </ListPanel>

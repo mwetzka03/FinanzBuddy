@@ -185,6 +185,8 @@ export const DEFAULT_KIND_ICON: Record<string, string> = {
   forecast: 'trending',
   income_forecast: 'banknote',
   expense_forecast: 'calendar',
+  stock_purchase: 'trending',
+  stock_sale: 'trending',
 };
 
 export const DEFAULT_KIND_COLOR: Record<string, string> = {
@@ -198,4 +200,6 @@ export const DEFAULT_KIND_COLOR: Record<string, string> = {
   forecast: '#3b82f6',
   income_forecast: '#10b981',
   expense_forecast: '#8b5cf6',
+  stock_purchase: '#f59e0b',
+  stock_sale: '#10b981',
 };

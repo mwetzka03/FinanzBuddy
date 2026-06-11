@@ -4,40 +4,58 @@ import { useTheme } from './theme';
 export function useUi() {
   const { colors, mode, toggle } = useTheme();
 
-  const shadowSm = mode === 'dark' ? '0 2px 8px rgba(0,0,0,0.25)' : '0 2px 10px rgba(30, 58, 138, 0.06)';
-  const shadowMd = mode === 'dark' ? '0 8px 28px rgba(0,0,0,0.35)' : '0 10px 32px rgba(30, 58, 138, 0.1)';
-  const shadowLg = mode === 'dark' ? '0 16px 48px rgba(0,0,0,0.45)' : '0 20px 50px rgba(30, 58, 138, 0.12)';
+  const shadowSm =
+    mode === 'dark'
+      ? '0 2px 12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06)'
+      : '0 2px 12px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255,255,255,0.75)';
+  const shadowMd =
+    mode === 'dark'
+      ? '0 12px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.06)'
+      : '0 12px 36px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255,255,255,0.8)';
+  const shadowLg =
+    mode === 'dark'
+      ? '0 24px 64px rgba(0, 0, 0, 0.55)'
+      : '0 24px 64px rgba(0, 0, 0, 0.14)';
+
+  const glassSurface: CSSProperties = {
+    background: colors.glassElevated,
+    backdropFilter: 'blur(24px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+    border: `1px solid ${colors.glassBorder}`,
+    boxShadow: colors.shadowGlass,
+  };
 
   const btn: CSSProperties = {
     padding: '9px 16px',
-    borderRadius: 10,
-    border: `1px solid ${colors.border}`,
-    background: `linear-gradient(180deg, ${colors.bgCard} 0%, ${colors.bgMuted} 100%)`,
-    color: colors.accentDark,
+    borderRadius: 999,
+    border: `1px solid ${colors.glassBorder}`,
+    background: colors.glass,
+    backdropFilter: 'blur(20px) saturate(160%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+    color: colors.text,
     cursor: 'pointer',
     fontWeight: 600,
     whiteSpace: 'nowrap',
     boxShadow: shadowSm,
-    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+    transition: 'transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease',
   };
 
   const btnPrimary: CSSProperties = {
     padding: '10px 18px',
-    borderRadius: 10,
+    borderRadius: 999,
     border: 'none',
-    background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.accentDark} 100%)`,
+    background: colors.accent,
     color: '#fff',
     cursor: 'pointer',
-    fontWeight: 700,
+    fontWeight: 600,
     whiteSpace: 'nowrap',
-    boxShadow: `0 6px 20px ${colors.accent}44`,
-    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+    boxShadow: `0 4px 16px color-mix(in srgb, ${colors.accent} 35%, transparent)`,
+    transition: 'transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease',
   };
 
   const btnGhost: CSSProperties = {
     ...btn,
     background: 'transparent',
-    border: `1px solid ${colors.border}`,
     boxShadow: 'none',
   };
 
@@ -47,11 +65,13 @@ export function useUi() {
     maxWidth: '100%',
     boxSizing: 'border-box',
     padding: '10px 12px',
-    borderRadius: 10,
-    border: `1px solid ${colors.border}`,
-    background: colors.bgCard,
+    borderRadius: 12,
+    border: `1px solid ${colors.glassBorder}`,
+    background: colors.bgMuted,
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
     color: colors.text,
-    boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.04)',
+    boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.04)',
     transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
   };
 
@@ -70,18 +90,16 @@ export function useUi() {
   };
 
   const card: CSSProperties = {
-    border: `1px solid ${colors.border}`,
-    borderRadius: 16,
+    ...glassSurface,
+    borderRadius: 20,
     padding: 18,
-    background: colors.bgCard,
     minWidth: 0,
-    boxShadow: shadowSm,
   };
 
   const statCard: CSSProperties = {
     ...card,
-    background: `linear-gradient(145deg, ${colors.bgCard} 0%, ${colors.amountColumnBg} 100%)`,
-    border: `1px solid ${colors.accent}22`,
+    background: colors.glassElevated,
+    border: `1px solid ${colors.glassBorder}`,
   };
 
   const page: CSSProperties = {
@@ -97,13 +115,11 @@ export function useUi() {
   };
 
   const table: CSSProperties = {
-    border: `1px solid ${colors.border}`,
-    borderRadius: 16,
+    ...glassSurface,
+    borderRadius: 20,
     overflow: 'hidden',
-    background: colors.bgCard,
     width: '100%',
     minWidth: 0,
-    boxShadow: shadowSm,
   };
 
   const tableScroll: CSSProperties = {
@@ -114,41 +130,48 @@ export function useUi() {
 
   const tableHead: CSSProperties = {
     display: 'grid',
-    padding: '16px 24px',
-    background: `linear-gradient(180deg, ${colors.bgMuted} 0%, ${colors.bgCard} 100%)`,
-    fontWeight: 700,
-    fontSize: 12,
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
+    padding: '12px 20px',
+    background: `color-mix(in srgb, ${colors.bgMuted} 88%, transparent)`,
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    fontWeight: 600,
+    fontSize: 13,
+    letterSpacing: '-0.01em',
+    textTransform: 'none',
     color: colors.textMuted,
-    gap: 16,
-    columnGap: 24,
+    gap: 12,
+    columnGap: 20,
     minWidth: 0,
     alignItems: 'center',
     textAlign: 'left',
+    borderBottom: `1px solid ${colors.glassBorder}`,
   };
 
   const tableRow: CSSProperties = {
     display: 'grid',
-    padding: '16px 24px',
-    gap: 16,
-    columnGap: 24,
+    padding: '14px 20px',
+    gap: 12,
+    columnGap: 20,
     alignItems: 'center',
     minWidth: 0,
-    borderTop: `1px solid ${colors.border}`,
+    borderTop: `1px solid color-mix(in srgb, ${colors.glassBorder} 65%, transparent)`,
     transition: 'background 0.12s ease',
   };
+
+  function tableRowAccent(accentColor: string): CSSProperties {
+    return {
+      borderLeft: `4px solid ${accentColor}`,
+      background: `color-mix(in srgb, ${accentColor} 12%, ${colors.bgCard})`,
+    };
+  }
 
   const pageTitle: CSSProperties = {
     margin: '0 0 8px',
     fontSize: 'clamp(1.5rem, 2.5vw, 1.875rem)',
-    fontWeight: 800,
+    fontWeight: 700,
     letterSpacing: '-0.03em',
     lineHeight: 1.15,
-    background: `linear-gradient(135deg, ${colors.accentDark} 0%, ${colors.accent} 100%)`,
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    backgroundClip: 'text',
+    color: colors.text,
   };
 
   const sectionTitle: CSSProperties = {
@@ -164,7 +187,7 @@ export function useUi() {
     alignItems: 'center',
     gap: 6,
     marginBottom: 12,
-    color: colors.textMuted,
+    color: colors.accent,
     textDecoration: 'none',
     fontSize: 14,
     fontWeight: 500,
@@ -176,10 +199,10 @@ export function useUi() {
   const tdName: CSSProperties = { textAlign: 'left', minWidth: 0 };
 
   const detailLink: CSSProperties = {
-    color: colors.accentDark,
+    color: colors.accent,
     fontWeight: 600,
     textDecoration: 'none',
-    transition: 'color 0.15s ease',
+    transition: 'opacity 0.15s ease',
   };
 
   const nameLink: CSSProperties = detailLink;
@@ -205,11 +228,12 @@ export function useUi() {
     textTransform: 'none',
     letterSpacing: 'normal',
     fontSize: 13,
-    fontWeight: 700,
-    color: colors.text,
+    fontWeight: 600,
+    color: colors.textMuted,
     position: 'relative',
-    paddingLeft: 14,
-    paddingRight: 14,
+    paddingLeft: 4,
+    paddingRight: 4,
+    justifySelf: 'stretch',
   };
 
   function tdAmountText(amountCents?: number, neutral = false): CSSProperties {
@@ -217,12 +241,13 @@ export function useUi() {
       return {
         textAlign: 'center',
         fontFamily: 'ui-monospace, monospace',
-        fontWeight: 700,
+        fontWeight: 600,
         fontSize: 13,
         color: colors.text,
         position: 'relative',
-        paddingLeft: 14,
-        paddingRight: 14,
+        paddingLeft: 4,
+        paddingRight: 4,
+        justifySelf: 'stretch',
       };
     }
     const positive = amountCents == null ? true : amountCents > 0;
@@ -230,16 +255,16 @@ export function useUi() {
     return {
       textAlign: 'center',
       fontFamily: 'ui-monospace, monospace',
-      fontWeight: 700,
+      fontWeight: 600,
       fontSize: 13,
       color: zero ? colors.textMuted : positive ? colors.amountPositive : colors.amountNegative,
       position: 'relative',
-      paddingLeft: 14,
-      paddingRight: 14,
+      paddingLeft: 4,
+      paddingRight: 4,
+      justifySelf: 'stretch',
     };
   }
 
-  /** @deprecated use TdAmount component with AmountTable */
   function tdAmount(_isLast = false, amountCents?: number): CSSProperties {
     return tdAmountText(amountCents);
   }
@@ -281,7 +306,8 @@ export function useUi() {
     padding: '14px 16px',
     border: `1px solid ${colors.dangerBorder}`,
     background: colors.dangerBg,
-    borderRadius: 14,
+    backdropFilter: 'blur(12px)',
+    borderRadius: 16,
     marginBottom: 16,
     color: colors.text,
     boxShadow: shadowSm,
@@ -300,16 +326,12 @@ export function useUi() {
     position: 'relative',
     zIndex: 2,
     overflow: 'visible',
-    border: `1px solid ${colors.accent}18`,
-    boxShadow: shadowMd,
   };
 
   const listPanel: CSSProperties = {
     ...card,
     marginBottom: 28,
     position: 'relative',
-    border: `1px solid ${colors.accent}18`,
-    boxShadow: shadowMd,
   };
 
   const pageIntro: CSSProperties = {
@@ -327,9 +349,11 @@ export function useUi() {
     right: 0,
     marginTop: 6,
     zIndex: 30,
-    background: colors.bgCard,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 12,
+    background: colors.glassElevated,
+    backdropFilter: 'blur(24px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+    border: `1px solid ${colors.glassBorder}`,
+    borderRadius: 14,
     boxShadow: shadowLg,
     maxHeight: 260,
     overflowY: 'auto',
@@ -356,6 +380,7 @@ export function useUi() {
     tableScroll,
     tableHead,
     tableRow,
+    tableRowAccent,
     pageTitle,
     sectionTitle,
     backLink,

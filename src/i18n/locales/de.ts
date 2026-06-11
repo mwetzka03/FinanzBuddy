@@ -101,6 +101,12 @@ export const de = {
     },
   },
 
+  table: {
+    paginationRange: '{{from}}–{{to}} von {{total}}',
+    prevPage: 'Zurück',
+    nextPage: 'Weiter',
+  },
+
   brand: {
     name: 'FinanzBuddy',
     tagline: 'Persönliche Finanzplanung',
@@ -136,6 +142,12 @@ export const de = {
       desc: 'Helles oder dunkles Theme für die gesamte App.',
       light: 'Hell',
       dark: 'Dunkel',
+    },
+    navigation: {
+      title: 'Navigation',
+      desc: 'Menü oben als Topbar oder links als Sidebar — wie bei macOS.',
+      topbar: 'Topbar',
+      sidebar: 'Sidebar',
     },
     about: {
       title: 'Über FinanzBuddy',
@@ -420,7 +432,7 @@ export const de = {
       kontostandDeltaPrevMonth: 'Δ zum Vormonat',
       kontostandDeltaPrevDay: 'Δ zum Vortag',
       startBalance: 'Startsaldo (Prognose)',
-      startLiquid: 'Start Liquide Mittel (Prognose)',
+      startLiquid: 'Start liquide Mittel',
       income: 'Einnahmen',
       incomeWithMonth: 'Einnahmen ({{month}})',
       incomeWithPeriod: 'Einnahmen ({{period}})',
@@ -437,7 +449,7 @@ export const de = {
       debtIOwe: 'Meine Schulden',
       endBalance: 'Endsaldo (Prognose)',
       deltaBalance: 'Δ Start → Endsaldo',
-      endLiquid: 'Ende Liquide Mittel (Prognose)',
+      endLiquid: 'Ende liquide Mittel',
       deltaLiquid: 'Δ Start → Ende Liquide',
       dayIncome: 'Einnahmen des Tages',
       dayExpenses: 'Ausgaben des Tages',
@@ -450,19 +462,24 @@ export const de = {
       startBalance:
         'Prognostizierter Saldo zu Monatsbeginn (Ist + offene Forecasts, ohne Einkaufszettel — die zählen in Ausgaben). Korrekturen fließen über den Ledger ein. Erster Monat: Backend-Prognose, danach: Endsaldo Vormonat.',
       startLiquid:
-        'Liquide Mittel zu Monatsbeginn (Prognose). Erster Monat: Backend-Prognose (Korrekturen + Forecasts auf liquiden Konten), danach: Ende liquide Vormonat.',
+        'Liquide Mittel zu Monatsbeginn (Ist-Saldo auf liquiden Konten). Erster Monat: berechneter Startwert, danach: Ende liquide Vormonat.',
       income:
         'Einnahmen im gewählten Zeitraum (gebucht + offene Prognosen). Einnahmen am letzten Bankarbeitstag zählen erst im Folgemonat. Klick filtert die Ereignisliste.',
+      incomeDeltaPrev: 'Veränderung der Einnahmen gegenüber dem vorherigen Zeitraum.',
       expenses:
         'Ausgaben im gewählten Zeitraum (gebucht + Prognosen) — ohne Transfers, Korrekturen und reine Depot-Käufe. Klick filtert die Ereignisliste.',
+      expensesDeltaPrev: 'Veränderung der Ausgaben gegenüber dem vorherigen Zeitraum.',
       net: 'Einnahmen minus Ausgaben im gewählten Monat.',
       fixedCosts: 'Wiederkehrende Fixkosten im Monat. Klick filtert die Ereignisliste.',
+      fixedCostsDeltaPrev: 'Veränderung der Fixkosten gegenüber dem vorherigen Zeitraum.',
       remainingFixedCosts:
         'Offene Fixkosten im Monat: geplante Termine minus bereits zugeordnete Ausgaben (Ist-Betrag der Buchung).',
       variableCosts: 'Variable Monatskosten (Prognose oder Ist). Klick filtert die Ereignisliste.',
+      variableCostsDeltaPrev: 'Veränderung der variablen Kosten gegenüber dem vorherigen Zeitraum.',
       remainingVariableCosts:
         'Verbleibendes Budget in den variablen Kosten-Geldtopf: Prognose minus bereits kategorisierte Ausgaben.',
       buys: 'Angewendete Kaufposten und geplante Käufe im Monat.',
+      buysDeltaPrev: 'Veränderung der Buys gegenüber dem vorherigen Zeitraum.',
       debtOwed:
         'Offene Forderungen — Beträge, die dir andere schulden. Nur in der Gesamtübersicht (Alle Konten), fließen nicht in Kontosalden ein.',
       debtIOwe:

@@ -22,51 +22,118 @@ export interface ThemeColors {
   dangerBorder: string;
   navActive: string;
   navBubbleText: string;
+  glass: string;
+  glassElevated: string;
+  glassBorder: string;
+  glassHighlight: string;
+  shadowGlass: string;
 }
 
+/** Apple-inspired Liquid Glass palettes (macOS vibrancy). */
 const light: ThemeColors = {
-  bg: '#f8fafc',
-  bgCard: '#ffffff',
-  bgMuted: '#f1f5f9',
-  text: '#0f172a',
-  textMuted: '#64748b',
-  border: '#e2e8f0',
-  accent: '#7c3aed',
-  accentDark: '#1e3a8a',
-  accentSoft: '#ede9fe',
-  shop: '#ec4899',
-  coin: '#f59e0b',
-  coinSoft: '#fef3c7',
-  amountPositive: '#15803d',
-  amountNegative: '#dc2626',
-  amountColumnBg: 'rgba(124, 58, 237, 0.06)',
-  dangerBg: '#fef2f2',
-  dangerBorder: '#fecaca',
-  navActive: '#ede9fe',
-  navBubbleText: '#4338ca',
+  bg: '#e8ecf4',
+  bgCard: 'rgba(255, 255, 255, 0.62)',
+  bgMuted: 'rgba(255, 255, 255, 0.42)',
+  text: '#1d1d1f',
+  textMuted: '#6e6e73',
+  border: 'rgba(255, 255, 255, 0.55)',
+  accent: '#007aff',
+  accentDark: '#0051d5',
+  accentSoft: 'rgba(0, 122, 255, 0.14)',
+  shop: '#ff2d55',
+  coin: '#ff9500',
+  coinSoft: 'rgba(255, 149, 0, 0.16)',
+  amountPositive: '#248a3d',
+  amountNegative: '#d70015',
+  amountColumnBg: 'rgba(0, 122, 255, 0.08)',
+  dangerBg: 'rgba(255, 59, 48, 0.12)',
+  dangerBorder: 'rgba(255, 59, 48, 0.35)',
+  navActive: 'rgba(0, 122, 255, 0.16)',
+  navBubbleText: '#007aff',
+  glass: 'rgba(255, 255, 255, 0.58)',
+  glassElevated: 'rgba(255, 255, 255, 0.78)',
+  glassBorder: 'rgba(255, 255, 255, 0.72)',
+  glassHighlight: 'rgba(255, 255, 255, 0.92)',
+  shadowGlass: '0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.65) inset',
 };
 
 const dark: ThemeColors = {
-  bg: '#0b1220',
-  bgCard: '#1e293b',
-  bgMuted: '#334155',
-  text: '#f1f5f9',
-  textMuted: '#94a3b8',
-  border: '#334155',
-  accent: '#a78bfa',
-  accentDark: '#3b82f6',
-  accentSoft: '#312e81',
-  shop: '#f472b6',
-  coin: '#fbbf24',
-  coinSoft: '#422006',
-  amountPositive: '#22c55e',
-  amountNegative: '#ef4444',
-  amountColumnBg: 'rgba(167, 139, 250, 0.12)',
-  dangerBg: '#450a0a',
-  dangerBorder: '#7f1d1d',
-  navActive: '#312e81',
-  navBubbleText: '#c4b5fd',
+  bg: '#0a0a0c',
+  bgCard: 'rgba(44, 44, 46, 0.62)',
+  bgMuted: 'rgba(58, 58, 60, 0.52)',
+  text: '#f5f5f7',
+  textMuted: '#98989d',
+  border: 'rgba(255, 255, 255, 0.12)',
+  accent: '#0a84ff',
+  accentDark: '#409cff',
+  accentSoft: 'rgba(10, 132, 255, 0.22)',
+  shop: '#ff375f',
+  coin: '#ff9f0a',
+  coinSoft: 'rgba(255, 159, 10, 0.18)',
+  amountPositive: '#30d158',
+  amountNegative: '#ff453a',
+  amountColumnBg: 'rgba(10, 132, 255, 0.14)',
+  dangerBg: 'rgba(255, 69, 58, 0.16)',
+  dangerBorder: 'rgba(255, 69, 58, 0.4)',
+  navActive: 'rgba(10, 132, 255, 0.24)',
+  navBubbleText: '#64d2ff',
+  glass: 'rgba(44, 44, 46, 0.58)',
+  glassElevated: 'rgba(58, 58, 60, 0.78)',
+  glassBorder: 'rgba(255, 255, 255, 0.14)',
+  glassHighlight: 'rgba(255, 255, 255, 0.08)',
+  shadowGlass: '0 12px 40px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.06) inset',
 };
+
+function applyThemeVars(mode: ThemeMode, colors: ThemeColors) {
+  const root = document.documentElement;
+  root.dataset.theme = mode;
+  root.style.background = colors.bg;
+  root.style.color = colors.text;
+
+  const vars: Record<string, string> = {
+    '--fh-bg': colors.bg,
+    '--fh-text': colors.text,
+    '--fh-border': colors.border,
+    '--fh-bg-card': colors.bgCard,
+    '--fh-bg-muted': colors.bgMuted,
+    '--fh-text-muted': colors.textMuted,
+    '--fh-accent': colors.accent,
+    '--fh-accent-dark': colors.accentDark,
+    '--fh-accent-soft': colors.accentSoft,
+    '--fh-shop': colors.shop,
+    '--fh-coin': colors.coin,
+    '--fh-coin-soft': colors.coinSoft,
+    '--fh-amount-positive': colors.amountPositive,
+    '--fh-amount-negative': colors.amountNegative,
+    '--fh-danger': colors.amountNegative,
+    '--fh-danger-bg': colors.dangerBg,
+    '--fh-danger-border': colors.dangerBorder,
+    '--fh-nav-active': colors.navActive,
+    '--fh-nav-bubble-text': colors.navBubbleText,
+    '--fh-glass': colors.glass,
+    '--fh-glass-elevated': colors.glassElevated,
+    '--fh-glass-border': colors.glassBorder,
+    '--fh-glass-highlight': colors.glassHighlight,
+    '--fh-shadow-glass': colors.shadowGlass,
+    '--fh-glass-blur': '40px',
+    '--fh-glass-saturate': '180%',
+    '--fh-amount-bg':
+      mode === 'dark' ? 'rgba(10, 132, 255, 0.18)' : 'rgba(0, 122, 255, 0.1)',
+    '--fh-amount-border':
+      mode === 'dark' ? 'rgba(10, 132, 255, 0.45)' : 'rgba(0, 122, 255, 0.28)',
+    '--fh-scrollbar-size': '10px',
+    '--fh-scrollbar-track':
+      mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+    '--fh-scrollbar-thumb':
+      mode === 'dark' ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.18)',
+    '--fh-scrollbar-thumb-hover':
+      mode === 'dark' ? 'rgba(255, 255, 255, 0.34)' : 'rgba(0, 0, 0, 0.28)',
+  };
+
+  for (const [key, value] of Object.entries(vars)) {
+    root.style.setProperty(key, value);
+  }
+}
 
 interface ThemeContextValue {
   mode: ThemeMode;
@@ -87,31 +154,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     localStorage.setItem('finanzbuddy-theme', mode);
-    document.documentElement.dataset.theme = mode;
-    document.documentElement.style.background = colors.bg;
-    document.documentElement.style.color = colors.text;
-    document.documentElement.style.setProperty('--fh-bg', colors.bg);
-    document.documentElement.style.setProperty('--fh-text', colors.text);
-    document.documentElement.style.setProperty('--fh-border', colors.border);
-    document.documentElement.style.setProperty('--fh-bg-card', colors.bgCard);
-    document.documentElement.style.setProperty('--fh-bg-muted', colors.bgMuted);
-    document.documentElement.style.setProperty('--fh-text-muted', colors.textMuted);
-    document.documentElement.style.setProperty('--fh-accent', colors.accent);
-    document.documentElement.style.setProperty('--fh-accent-dark', colors.accentDark);
-    document.documentElement.style.setProperty('--fh-accent-soft', colors.accentSoft);
-    document.documentElement.style.setProperty('--fh-shop', colors.shop);
-    document.documentElement.style.setProperty('--fh-coin', colors.coin);
-    document.documentElement.style.setProperty('--fh-coin-soft', colors.coinSoft);
-    document.documentElement.style.setProperty(
-      '--fh-amount-bg',
-      mode === 'dark' ? 'rgba(167, 139, 250, 0.2)' : 'rgba(124, 58, 237, 0.12)',
-    );
-    document.documentElement.style.setProperty('--fh-amount-border',
-      mode === 'dark' ? 'rgba(167, 139, 250, 0.55)' : 'rgba(124, 58, 237, 0.4)',
-    );
-    document.documentElement.style.setProperty('--fh-amount-positive', colors.amountPositive);
-    document.documentElement.style.setProperty('--fh-amount-negative', colors.amountNegative);
-  }, [mode, colors.bg, colors.text, colors.border, colors.bgCard, colors.bgMuted, colors.textMuted, colors.accent, colors.accentDark, colors.accentSoft, colors.shop, colors.coin, colors.coinSoft, colors.amountPositive, colors.amountNegative]);
+    applyThemeVars(mode, colors);
+  }, [mode, colors]);
 
   const value = useMemo(
     () => ({

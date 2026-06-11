@@ -22,8 +22,8 @@ export function DataGrid({ columns, header, emptyMessage, isEmpty, minWidth, chi
         style={{ ...ui.table, ...(minWidth ? { minWidth } : {}) }}
         className="fh-data-grid fh-amount-table-target"
       >
-        <div style={{ ...ui.tableHead, gridTemplateColumns: columns }}>{header}</div>
-        {isEmpty ? <div style={ui.emptyRow}>{emptyMessage ?? 'Keine Einträge.'}</div> : children}
+        <div style={{ ...ui.tableHead, gridTemplateColumns: columns }} className="fh-table-head">{header}</div>
+        {isEmpty ? <div style={ui.emptyRow} className="fh-empty-row">{emptyMessage ?? 'Keine Einträge.'}</div> : children}
         <AmountBandLayer tableRef={tableRef} />
       </div>
     </div>
@@ -41,7 +41,7 @@ export function DataGridRow({
 }) {
   const ui = useUi();
   return (
-    <div style={{ ...ui.tableRow, gridTemplateColumns: columns }} className={className}>
+    <div style={{ ...ui.tableRow, gridTemplateColumns: columns }} className={['fh-table-row', className].filter(Boolean).join(' ')}>
       {children}
     </div>
   );

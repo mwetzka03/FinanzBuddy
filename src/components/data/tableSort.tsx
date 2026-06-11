@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import { useUi } from '../../lib/ui';
 
 export type SortDir = 'asc' | 'desc';
@@ -46,11 +47,12 @@ export function SortableTh<K extends string>({
 }: SortableThProps<K>) {
   const ui = useUi();
   const active = sort?.key === sortKey;
-  const indicator = active ? (sort.dir === 'asc' ? '▲' : '▼') : '↕';
+  const SortIcon = active ? (sort.dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
 
   return (
     <button
       type="button"
+      className={['fh-sort-th', active ? 'fh-sort-th--active' : ''].filter(Boolean).join(' ')}
       onClick={() => onSort(toggleSort(sort, sortKey))}
       style={{
         ...style,
@@ -60,22 +62,24 @@ export function SortableTh<K extends string>({
         margin: 0,
         cursor: 'pointer',
         font: 'inherit',
-        fontWeight: 'inherit',
+        fontWeight: active ? 700 : style?.fontWeight ?? 'inherit',
         letterSpacing: 'inherit',
         textTransform: 'inherit',
-        color: 'inherit',
+        color: active ? ui.colors.accent : style?.color ?? 'inherit',
         textAlign: align,
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        width: align === 'right' ? '100%' : undefined,
-        justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
+        width: align === 'right' || align === 'center' ? '100%' : undefined,
+        justifyContent:
+          align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
       }}
       title={active ? (sort.dir === 'asc' ? 'Aufsteigend' : 'Absteigend') : 'Sortieren'}
+      aria-pressed={active}
     >
       <span>{label}</span>
-      <span style={{ opacity: active ? 1 : 0.35, fontSize: 10, color: active ? ui.colors.accentDark : undefined }}>
-        {indicator}
+      <span className="fh-sort-indicator" aria-hidden>
+        <SortIcon size={14} strokeWidth={active ? 2.5 : 2} />
       </span>
     </button>
   );

@@ -10,10 +10,25 @@ export function DashboardCard(props: {
   info?: string;
   active?: boolean;
   onClick?: () => void;
+  inlineDelta?: { cents: number; tooltip: string; invertColors?: boolean };
 }) {
   const { statCard, colors } = useUi();
   const [hintOpen, setHintOpen] = useState(false);
+  const [deltaHintOpen, setDeltaHintOpen] = useState(false);
   const clickable = Boolean(props.onClick);
+
+  const deltaColor =
+    props.inlineDelta == null
+      ? undefined
+      : props.inlineDelta.cents === 0
+        ? colors.textMuted
+        : props.inlineDelta.invertColors
+          ? props.inlineDelta.cents > 0
+            ? colors.amountNegative
+            : colors.amountPositive
+          : props.inlineDelta.cents > 0
+            ? colors.amountPositive
+            : colors.amountNegative;
 
   return (
     <div
@@ -34,7 +49,7 @@ export function DashboardCard(props: {
         ...statCard,
         position: 'relative',
         overflow: 'visible',
-        zIndex: hintOpen || props.active ? 40 : 1,
+        zIndex: hintOpen || deltaHintOpen || props.active ? 40 : 1,
         cursor: clickable ? 'pointer' : undefined,
         border: props.active ? `2px solid ${colors.accent}` : statCard.border,
         boxShadow: props.active ? `0 0 0 3px ${colors.accentSoft}` : statCard.boxShadow,
@@ -63,7 +78,7 @@ export function DashboardCard(props: {
               fontStyle: 'italic',
               fontFamily: 'Georgia, serif',
               color: colors.textMuted,
-              background: colors.bgCard,
+              background: colors.glassElevated,
               cursor: 'help',
               userSelect: 'none',
             }}
@@ -82,8 +97,10 @@ export function DashboardCard(props: {
                 padding: '8px 10px',
                 borderRadius: 8,
                 border: `1px solid ${colors.border}`,
-                background: colors.bgCard,
-                boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
+                background: colors.glassElevated,
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                boxShadow: colors.shadowGlass,
                 fontSize: 12,
                 fontWeight: 400,
                 lineHeight: 1.45,
@@ -110,6 +127,10 @@ export function DashboardCard(props: {
       </div>
       <div
         style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          flexWrap: 'wrap',
+          gap: '6px 8px',
           fontSize: 'clamp(1.1rem, 2vw, 1.35rem)',
           fontWeight: 800,
           marginTop: 8,
@@ -117,7 +138,51 @@ export function DashboardCard(props: {
           color: props.valueColor ?? colors.accentDark,
         }}
       >
-        {props.value}
+        <span>{props.value}</span>
+        {props.inlineDelta ? (
+          <span
+            style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+            onMouseEnter={() => setDeltaHintOpen(true)}
+            onMouseLeave={() => setDeltaHintOpen(false)}
+          >
+            <span
+              style={{
+                fontSize: '0.72em',
+                fontWeight: 700,
+                color: deltaColor,
+                fontFamily: 'ui-monospace, monospace',
+                cursor: 'help',
+              }}
+            >
+              {formatDelta(props.inlineDelta.cents)}
+            </span>
+            {deltaHintOpen ? (
+              <span
+                role="tooltip"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: '100%',
+                  marginTop: 6,
+                  width: 'max-content',
+                  maxWidth: 'min(260px, 70vw)',
+                  padding: '6px 8px',
+                  borderRadius: 8,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.glassElevated,
+                  boxShadow: colors.shadowGlass,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: colors.text,
+                  zIndex: 9999,
+                  whiteSpace: 'normal',
+                }}
+              >
+                {props.inlineDelta.tooltip}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
       </div>
       {props.subtitle && (
         <div style={{ fontSize: 12, marginTop: 6, color: props.subtitleColor ?? colors.textMuted }}>{props.subtitle}</div>

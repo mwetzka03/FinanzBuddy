@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { IncomeForecastDetail, IsoDate } from '../lib/types';
 import { AmountTable } from '../components/data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import { TdAmount } from '../components/data/AmountCells';
 import { formatDisplayDate, isoToday, isoToMonth } from '../lib/date';
@@ -57,6 +58,7 @@ export function IncomeForecastDetailPage() {
       }),
     [occurrences, sort, actualMap, detail],
   );
+  const pagination = useTablePagination(sortedOccurrences);
 
   async function saveDate(occurrenceDate: IsoDate) {
     if (!id) return;
@@ -101,7 +103,7 @@ export function IncomeForecastDetailPage() {
           Leer lassen = Prognose. Ist-Betrag überschreibt die Prognose bei der Kontobuchung am Termin.
         </p>
         <AmountTable minWidth={540}>
-            <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
+            <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
               <SortableTh label="Termin" sortKey="date" sort={sort} onSort={setSort} />
               <SortableTh
                 label="Prognose"
@@ -109,7 +111,7 @@ export function IncomeForecastDetailPage() {
                 sort={sort}
                 onSort={setSort}
                 style={ui.thAmount}
-                align="right"
+                align="center"
               />
               <SortableTh
                 label="Tatsächlich"
@@ -117,14 +119,21 @@ export function IncomeForecastDetailPage() {
                 sort={sort}
                 onSort={setSort}
                 style={ui.thAmount}
-                align="right"
+                align="center"
               />
               <div />
             </div>
+            <TablePaginationBar
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              totalItems={pagination.totalItems}
+              pageSize={pagination.pageSize}
+              onPageChange={pagination.setPage}
+            />
             {occurrences.length === 0 ? (
               <div style={ui.emptyRow}>Keine Termine.</div>
             ) : (
-              sortedOccurrences.map((occurrenceDate) => {
+              pagination.pageItems.map((occurrenceDate) => {
                 const booked = actualMap.has(occurrenceDate);
                 const effective = booked ? actualMap.get(occurrenceDate)! : detail.forecast.amountCents;
                 const isPast = occurrenceDate <= today;

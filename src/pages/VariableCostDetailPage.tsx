@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { IsoMonth, VariableCostCategorizedTransaction, VariableCostDetail } from '../lib/types';
 import { TdAmount } from '../components/data/AmountCells';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import {
   VARIABLE_COSTS_START_MONTH,
@@ -81,6 +82,7 @@ export function VariableCostDetailPage() {
       },
     });
   }, [months, sort, detail]);
+  const pagination = useTablePagination(sortedMonths);
 
   async function refresh() {
     if (!id) return;
@@ -181,7 +183,7 @@ export function VariableCostDetailPage() {
         </p>
         <div style={ui.tableScroll}>
           <div style={{ ...ui.table, minWidth: 640 }}>
-            <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
+            <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
               <SortableTh label="Monat" sortKey="month" sort={sort} onSort={setSort} />
               <SortableTh
                 label="Prognose"
@@ -189,7 +191,7 @@ export function VariableCostDetailPage() {
                 sort={sort}
                 onSort={setSort}
                 style={ui.thAmount}
-                align="right"
+                align="center"
               />
               <SortableTh
                 label="Budget"
@@ -197,7 +199,7 @@ export function VariableCostDetailPage() {
                 sort={sort}
                 onSort={setSort}
                 style={ui.thAmount}
-                align="right"
+                align="center"
               />
               <SortableTh
                 label="Tatsächlich"
@@ -205,11 +207,18 @@ export function VariableCostDetailPage() {
                 sort={sort}
                 onSort={setSort}
                 style={ui.thAmount}
-                align="right"
+                align="center"
               />
               <div />
             </div>
-            {sortedMonths.map((month) => {
+            <TablePaginationBar
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              totalItems={pagination.totalItems}
+              pageSize={pagination.pageSize}
+              onPageChange={pagination.setPage}
+            />
+            {pagination.pageItems.map((month) => {
               const editable = isMonthEditable(month);
               const monthTxs = txByMonth.get(month) ?? [];
               const txSum = txSumForMonth(monthTxs);

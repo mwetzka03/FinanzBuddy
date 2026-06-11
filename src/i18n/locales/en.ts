@@ -103,6 +103,12 @@ export const en: TranslationDict = {
     },
   },
 
+  table: {
+    paginationRange: '{{from}}–{{to}} of {{total}}',
+    prevPage: 'Previous',
+    nextPage: 'Next',
+  },
+
   brand: {
     name: 'FinanzBuddy',
     tagline: 'Personal finance, offline and local.',
@@ -138,6 +144,12 @@ export const en: TranslationDict = {
       desc: 'Light or dark theme for the entire app.',
       light: 'Light',
       dark: 'Dark',
+    },
+    navigation: {
+      title: 'Navigation',
+      desc: 'Menu as top bar or left sidebar — macOS style.',
+      topbar: 'Top bar',
+      sidebar: 'Sidebar',
     },
     about: {
       title: 'About FinanzBuddy',
@@ -422,7 +434,7 @@ export const en: TranslationDict = {
       kontostandDeltaPrevMonth: 'Δ vs prev. month',
       kontostandDeltaPrevDay: 'Δ vs prev. day',
       startBalance: 'Opening balance (forecast)',
-      startLiquid: 'Opening liquid funds (forecast)',
+      startLiquid: 'Opening liquid funds',
       income: 'Income',
       incomeWithMonth: 'Income ({{month}})',
       incomeWithPeriod: 'Income ({{period}})',
@@ -439,7 +451,7 @@ export const en: TranslationDict = {
       debtIOwe: 'My debts',
       endBalance: 'Closing balance (forecast)',
       deltaBalance: 'Δ start → closing',
-      endLiquid: 'Closing liquid funds (forecast)',
+      endLiquid: 'Closing liquid funds',
       deltaLiquid: 'Δ start → closing liquid',
       dayIncome: 'Income today',
       dayExpenses: 'Expenses today',
@@ -452,19 +464,24 @@ export const en: TranslationDict = {
       startBalance:
         'Forecast opening balance (actual + open forecasts, excluding shopping list — those count as expenses). Adjustments via ledger. First month: backend forecast, then prior month closing balance.',
       startLiquid:
-        'Liquid funds at month start (forecast). First month: backend forecast (adjustments + forecasts on liquid accounts), then prior month closing liquid.',
+        'Liquid funds at month start (actual balance on liquid accounts). First month: computed opening value, then prior month closing liquid.',
       income:
         'Income in the selected period (booked + open forecasts). Income on the last business day counts in the following month. Click to filter the event list.',
+      incomeDeltaPrev: 'Change in income vs the previous period.',
       expenses:
         'Expenses in the selected period (booked + forecasts) — excluding transfers, adjustments and pure portfolio purchases. Click to filter the event list.',
+      expensesDeltaPrev: 'Change in expenses vs the previous period.',
       net: 'Income minus expenses in the selected month.',
       fixedCosts: 'Recurring fixed costs in the month. Click to filter the event list.',
+      fixedCostsDeltaPrev: 'Change in fixed costs vs the previous period.',
       remainingFixedCosts:
         'Open fixed costs in the month: scheduled charges minus expenses already linked (actual booking amount).',
       variableCosts: 'Variable monthly costs (forecast or actual). Click to filter the event list.',
+      variableCostsDeltaPrev: 'Change in variable costs vs the previous period.',
       remainingVariableCosts:
         'Remaining budget in variable cost pots: forecast minus categorized expenses.',
       buys: 'Applied and planned purchases in the month.',
+      buysDeltaPrev: 'Change in buys vs the previous period.',
       debtOwed:
         'Open receivables — amounts others owe you. Only in the all-accounts overview; not included in account balances.',
       debtIOwe:

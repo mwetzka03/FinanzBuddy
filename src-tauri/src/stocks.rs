@@ -90,6 +90,7 @@ pub struct StockQuote {
 pub struct StockHoldingView {
   pub holding: StockHolding,
   pub quote: Option<StockQuote>,
+  pub sparkline: Option<Vec<StockChartPoint>>,
   pub current_value: Option<f64>,
   pub cost_basis: f64,
   pub gain_loss: Option<f64>,
@@ -543,6 +544,7 @@ struct ChartQuote {
   previous_close: f64,
   currency: String,
   market_time: i64,
+  sparkline: Vec<StockChartPoint>,
 }
 
 fn meta_f64(meta: &serde_json::Value, keys: &[&str]) -> Option<f64> {
@@ -563,6 +565,61 @@ fn last_chart_close(result: &serde_json::Value) -> Option<f64> {
     }
   }
   None
+}
+
+fn downsample_sparkline(points: Vec<StockChartPoint>, max_points: usize) -> Vec<StockChartPoint> {
+  if points.len() <= max_points {
+    return points;
+  }
+  let step = ((points.len() as f64) / (max_points as f64)).ceil() as usize;
+  let step = step.max(1);
+  points.into_iter().step_by(step).collect()
+}
+
+fn extract_sparkline_points(result: &serde_json::Value) -> Vec<StockChartPoint> {
+  let timestamps = result
+    .pointer("/timestamp")
+    .and_then(|v| v.as_array())
+    .cloned()
+    .unwrap_or_default();
+  let closes = result
+    .pointer("/indicators/quote/0/close")
+    .and_then(|v| v.as_array())
+    .cloned()
+    .unwrap_or_default();
+  let mut points = Vec::new();
+  for (idx, ts) in timestamps.iter().enumerate() {
+    let Some(ts_i) = ts.as_i64() else {
+      continue;
+    };
+    let Some(close) = closes.get(idx).and_then(|v| v.as_f64()) else {
+      continue;
+    };
+    if !close.is_finite() {
+      continue;
+    }
+    points.push(StockChartPoint {
+      timestamp: ts_i,
+      close,
+    });
+  }
+  downsample_sparkline(points, 32)
+}
+
+fn convert_sparkline_to_eur(
+  points: &[StockChartPoint],
+  currency: &str,
+  fx: &mut FxToEur,
+) -> Vec<StockChartPoint> {
+  points
+    .iter()
+    .filter_map(|point| {
+      fx.convert(point.close, currency).ok().map(|close| StockChartPoint {
+        timestamp: point.timestamp,
+        close,
+      })
+    })
+    .collect()
 }
 
 fn fetch_yahoo_chart(symbol: &str) -> AppResult<ChartQuote> {
@@ -614,12 +671,14 @@ fn fetch_yahoo_chart(symbol: &str) -> AppResult<ChartQuote> {
     ],
   )
   .unwrap_or_else(|| chrono::Utc::now().timestamp());
+  let sparkline = extract_sparkline_points(result);
   Ok(ChartQuote {
     yahoo_symbol: symbol.trim().to_uppercase(),
     price,
     previous_close,
     currency,
     market_time,
+    sparkline,
   })
 }
 
@@ -732,23 +791,24 @@ fn quote_symbol_candidates(symbol_or_isin: &str, yahoo_symbol: &str) -> Vec<Stri
   out
 }
 
-fn fetch_lsx_eur_quote_with_rate(symbol_or_isin: &str, fx: &mut FxToEur) -> AppResult<StockQuote> {
+fn fetch_lsx_eur_quote_with_rate(symbol_or_isin: &str, fx: &mut FxToEur) -> AppResult<(StockQuote, Vec<StockChartPoint>)> {
   let yahoo_symbol = resolve_lsx_yahoo_symbol(symbol_or_isin)?;
   let candidates = quote_symbol_candidates(symbol_or_isin, &yahoo_symbol);
 
-  let mut best: Option<(StockQuote, i64)> = None;
+  let mut best: Option<(StockQuote, Vec<StockChartPoint>, i64)> = None;
   let mut last_err: Option<AppError> = None;
   for candidate in candidates {
     match fetch_yahoo_chart(&candidate) {
       Ok(chart) => match chart_prices_in_eur(&chart, fx) {
         Ok((price_eur, previous_close_eur)) => {
           let quote = build_stock_quote(&chart.yahoo_symbol, price_eur, previous_close_eur);
+          let sparkline = convert_sparkline_to_eur(&chart.sparkline, &chart.currency, fx);
           let replace = best
             .as_ref()
-            .map(|(_, ts)| chart.market_time > *ts)
+            .map(|(_, _, ts)| chart.market_time > *ts)
             .unwrap_or(true);
           if replace {
-            best = Some((quote, chart.market_time));
+            best = Some((quote, sparkline, chart.market_time));
           }
         }
         Err(e) => last_err = Some(e),
@@ -757,8 +817,8 @@ fn fetch_lsx_eur_quote_with_rate(symbol_or_isin: &str, fx: &mut FxToEur) -> AppR
     }
   }
 
-  if let Some((quote, _)) = best {
-    return Ok(quote);
+  if let Some((quote, sparkline, _)) = best {
+    return Ok((quote, sparkline));
   }
 
   Err(last_err.unwrap_or_else(|| AppError::Invalid("Kein EUR-Kurs gefunden".into())))
@@ -1004,7 +1064,11 @@ fn search_stock_suggestions_inner(query: String, mode: Option<&str>) -> AppResul
   Ok(out)
 }
 
-fn build_holding_view(holding: StockHolding, quote: Option<StockQuote>) -> StockHoldingView {
+fn build_holding_view(
+  holding: StockHolding,
+  quote: Option<StockQuote>,
+  sparkline: Option<Vec<StockChartPoint>>,
+) -> StockHoldingView {
   let cost_basis = (holding.buy_price_cents as f64 / 100.0) * holding.shares;
   let (current_value, gain_loss, gain_loss_pct) = if let Some(ref q) = quote {
     let cv = q.price * holding.shares;
@@ -1022,11 +1086,38 @@ fn build_holding_view(holding: StockHolding, quote: Option<StockQuote>) -> Stock
   StockHoldingView {
     holding,
     quote,
+    sparkline,
     current_value,
     cost_basis,
     gain_loss,
     gain_loss_pct,
   }
+}
+
+type MarketDataCache = HashMap<String, (Option<StockQuote>, Option<Vec<StockChartPoint>>)>;
+
+fn cached_market_data(
+  symbol: &str,
+  fx: &mut FxToEur,
+  cache: &mut MarketDataCache,
+) -> (Option<StockQuote>, Option<Vec<StockChartPoint>>) {
+  let key = normalize_holding_symbol(symbol);
+  if let Some(cached) = cache.get(&key) {
+    return cached.clone();
+  }
+  let bundle = match fetch_lsx_eur_quote_with_rate(symbol, fx) {
+    Ok((quote, sparkline)) => {
+      let sparkline = if sparkline.is_empty() {
+        None
+      } else {
+        Some(sparkline)
+      };
+      (Some(quote), sparkline)
+    }
+    Err(_) => (None, None),
+  };
+  cache.insert(key, bundle.clone());
+  bundle
 }
 
 #[tauri::command]
@@ -1072,10 +1163,11 @@ fn map_holding_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<StockHolding> {
 pub fn portfolio_total_current_value_eur(holdings: &[StockHolding]) -> AppResult<f64> {
   let mut fx = FxToEur::new();
   let _ = fx.foreign_per_eur("USD");
+  let mut cache: MarketDataCache = HashMap::new();
   let mut total_value = 0.0;
   for h in holdings {
-    let quote = fetch_lsx_eur_quote_with_rate(&h.symbol, &mut fx).ok();
-    let view = build_holding_view(h.clone(), quote);
+    let (quote, _) = cached_market_data(&h.symbol, &mut fx, &mut cache);
+    let view = build_holding_view(h.clone(), quote, None);
     total_value += view.current_value.unwrap_or(view.cost_basis);
   }
   Ok(total_value)
@@ -1148,10 +1240,11 @@ fn summarize_portfolio(rows: Vec<StockHolding>) -> AppResult<StockPortfolioSumma
   let mut total_value = 0.0;
   let mut fx = FxToEur::new();
   let _ = fx.foreign_per_eur("USD");
+  let mut cache: MarketDataCache = HashMap::new();
 
   for h in rows {
-    let quote = fetch_lsx_eur_quote_with_rate(&h.symbol, &mut fx).ok();
-    let view = build_holding_view(h, quote);
+    let (quote, sparkline) = cached_market_data(&h.symbol, &mut fx, &mut cache);
+    let view = build_holding_view(h, quote, sparkline);
     total_cost += view.cost_basis;
     if let Some(cv) = view.current_value {
       total_value += cv;
@@ -1601,9 +1694,19 @@ fn get_stock_position_detail_inner(state: State<'_, AppState>, id: String) -> Ap
 
   let mut fx = FxToEur::new();
   let _ = fx.foreign_per_eur("USD");
-  let quote = fetch_lsx_eur_quote_with_rate(&holding.symbol, &mut fx).ok();
+  let (quote, sparkline) = match fetch_lsx_eur_quote_with_rate(&holding.symbol, &mut fx) {
+    Ok((quote, sparkline)) => (
+      Some(quote),
+      if sparkline.is_empty() {
+        None
+      } else {
+        Some(sparkline)
+      },
+    ),
+    Err(_) => (None, None),
+  };
   let price_eur = quote.as_ref().map(|q| q.price);
-  let position = build_holding_view(holding, quote);
+  let position = build_holding_view(holding, quote, sparkline);
   let lot_views = lots
     .into_iter()
     .map(|lot| build_lot_view(lot, price_eur))

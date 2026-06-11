@@ -1,9 +1,10 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { useNavLayout } from './lib/layoutPreference';
 import { devLog } from './lib/startupDevLog';
 import { isDeveloperModeEnabled } from './lib/developerMode';
 import { useCalcLogBridge } from './lib/calcLogBridge';
-import { AppTopBar } from './components/layout/AppTopBar';
+import { AppShell } from './components/layout/AppShell';
 import { LoadingOverlay } from './components/layout/LoadingOverlay';
 import { DeveloperLogDock } from './components/common/DeveloperLogDock';
 import { OnboardingOverlay } from './components/onboarding/OnboardingOverlay';
@@ -47,6 +48,7 @@ import { SettingsPage } from './pages/SettingsPage';
 export function App() {
 
   const location = useLocation();
+  const { layout } = useNavLayout();
   const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
 
   useCalcLogBridge();
@@ -70,7 +72,7 @@ export function App() {
 
   return (
 
-    <div className="fh-app">
+    <div className={`fh-app fh-app--${layout}`}>
 
       {setupRequired === true ? (
         <>
@@ -83,10 +85,8 @@ export function App() {
 
       {setupRequired === false ? (
         <>
-          <AppTopBar />
+          <AppShell>
           <LoadingOverlay />
-
-          <main className="fh-main fh-main-with-overlay">
 
             <Routes>
 
@@ -132,8 +132,7 @@ export function App() {
               <Route path="/settings" element={<SettingsPage />} />
 
             </Routes>
-
-          </main>
+          </AppShell>
         </>
       ) : null}
 

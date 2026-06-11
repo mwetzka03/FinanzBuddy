@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Account } from '../../lib/types';
 import { buildAccountTreeRows, effectiveAccountKind, isOberspartopf } from '../../lib/accounts';
 import { useLocale } from '../../i18n/LocaleProvider';
+import { useTheme } from '../../lib/theme';
 import { useUi } from '../../lib/ui';
 
 function accountIcon(a: Account | null): string {
@@ -40,6 +41,7 @@ export function DashboardAccountSelect(props: {
   showAllOption?: boolean;
 }) {
   const ui = useUi();
+  const { mode } = useTheme();
   const { t } = useLocale();
   const { colors } = ui;
   const [open, setOpen] = useState(false);
@@ -54,13 +56,19 @@ export function DashboardAccountSelect(props: {
 
   const label = selected?.name ?? t('common.allAccounts');
 
+  const menuSurface =
+    mode === 'dark'
+      ? 'color-mix(in srgb, rgb(44, 44, 46) 92%, rgb(10, 10, 12))'
+      : 'color-mix(in srgb, white 94%, rgb(232, 236, 244))';
+
   return (
-    <div style={{ position: 'relative', flex: '1 1 360px', minWidth: 320, maxWidth: 560 }}>
+    <div className="fh-account-select" style={{ position: 'relative', flex: '1 1 360px', minWidth: 320, maxWidth: 560, zIndex: open ? 120 : undefined }}>
       <div style={{ ...ui.label, marginBottom: 6, fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
         {t('dashboard.accountLabel')}
       </div>
       <button
         type="button"
+        className="fh-account-select__trigger"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -71,11 +79,16 @@ export function DashboardAccountSelect(props: {
           gap: 12,
           padding: '12px 14px',
           borderRadius: 14,
-          border: `1px solid ${open ? colors.accent : colors.border}`,
-          background: `linear-gradient(180deg, ${colors.bgCard} 0%, ${colors.bgMuted} 100%)`,
+          border: `1px solid ${open ? colors.accent : colors.glassBorder}`,
+          background:
+            mode === 'dark'
+              ? 'color-mix(in srgb, rgb(58, 58, 60) 88%, rgb(10, 10, 12))'
+              : 'color-mix(in srgb, white 90%, rgb(232, 236, 244))',
+          backdropFilter: 'blur(20px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(160%)',
           color: colors.text,
           cursor: 'pointer',
-          boxShadow: open ? `0 0 0 3px ${colors.accentSoft}` : '0 4px 14px rgba(15, 23, 42, 0.06)',
+          boxShadow: open ? `0 0 0 3px ${colors.accentSoft}` : colors.shadowGlass,
           transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
           textAlign: 'left',
         }}
@@ -108,9 +121,10 @@ export function DashboardAccountSelect(props: {
 
       {open && (
         <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 50 }} onClick={() => setOpen(false)} aria-hidden />
+          <div className="fh-account-select__backdrop" onClick={() => setOpen(false)} aria-hidden />
           <ul
             role="listbox"
+            className="fh-account-select__menu fh-scrollbar"
             style={{
               position: 'absolute',
               top: 'calc(100% + 6px)',
@@ -120,10 +134,12 @@ export function DashboardAccountSelect(props: {
               padding: 6,
               listStyle: 'none',
               borderRadius: 14,
-              border: `1px solid ${colors.border}`,
-              background: colors.bgCard,
-              boxShadow: '0 16px 40px rgba(15, 23, 42, 0.14)',
-              zIndex: 60,
+              border: `1px solid ${colors.glassBorder}`,
+              background: menuSurface,
+              backdropFilter: 'blur(28px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+              boxShadow: colors.shadowGlass,
+              zIndex: 2,
               maxHeight: 320,
               overflowY: 'auto',
             }}

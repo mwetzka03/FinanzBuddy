@@ -4,6 +4,7 @@ import { AddEntryButton } from '../common/AddEntryButton';
 import { Checkbox } from '../common/Checkbox';
 import { Modal } from '../common/Modal';
 import { AmountTable } from '../data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../data/tableSort';
 import { TdAmount } from '../data/AmountCells';
 import { DetailLink } from '../DetailLink';
@@ -117,6 +118,7 @@ export function IncomeForecastsPanel({ onError }: IncomeForecastsPanelProps) {
       }),
     [rows, sort, t],
   );
+  const pagination = useTablePagination(sortedRows);
 
   async function refresh() {
     const [data, accountRows] = await Promise.all([listIncomeForecasts(), listAccounts()]);
@@ -165,7 +167,7 @@ export function IncomeForecastsPanel({ onError }: IncomeForecastsPanelProps) {
 
       <ListPanel title={t('common.entries')} hint={t('incomeForecasts.listHint')}>
         <AmountTable>
-          <div style={{ ...ui.tableHead, gridTemplateColumns: DATA_COLS }}>
+          <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: DATA_COLS }}>
             <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
             <SortableTh label={t('common.rhythm')} sortKey="cadence" sort={sort} onSort={setSort} />
             <SortableTh
@@ -174,17 +176,24 @@ export function IncomeForecastsPanel({ onError }: IncomeForecastsPanelProps) {
               sort={sort}
               onSort={setSort}
               style={ui.thAmount}
-              align="right"
+              align="center"
             />
             <SortableTh label={t('common.firstPayment')} sortKey="firstCharge" sort={sort} onSort={setSort} />
             <SortableTh label={t('common.due')} sortKey="due" sort={sort} onSort={setSort} />
             <SortableTh label={t('common.end')} sortKey="end" sort={sort} onSort={setSort} />
             <div />
           </div>
+          <TablePaginationBar
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+          />
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.noForecasts')}</div>
           ) : (
-            sortedRows.map((r) => (
+            pagination.pageItems.map((r) => (
               <div key={r.id}>
                 <div style={{ ...ui.tableRow, gridTemplateColumns: DATA_COLS }}>
                   <div style={ui.tdName}>

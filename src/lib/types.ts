@@ -300,6 +300,7 @@ export interface StockQuote {
 export interface StockHoldingView {
   holding: StockHolding;
   quote: StockQuote | null;
+  sparkline?: StockChartPoint[] | null;
   currentValue: number | null;
   costBasis: number;
   gainLoss: number | null;

@@ -4,6 +4,7 @@ import type { ExpenseGroupSummary, IsoDate } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Modal } from '../components/common/Modal';
 import { AmountTable } from '../components/data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import { TdAmount } from '../components/data/AmountCells';
 import { DetailLink } from '../components/DetailLink';
@@ -37,6 +38,7 @@ export function ExpenseGroupsPage() {
       }),
     [rows, sort],
   );
+  const pagination = useTablePagination(sortedRows);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -67,7 +69,7 @@ export function ExpenseGroupsPage() {
     >
       <ListPanel hint={t('expenseGroups.listHint')}>
         <AmountTable minWidth={640}>
-          <div style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
+          <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: TABLE_COLS }}>
             <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
             <SortableTh
               label={t('common.total')}
@@ -75,15 +77,22 @@ export function ExpenseGroupsPage() {
               sort={sort}
               onSort={setSort}
               style={ui.thAmount}
-              align="right"
+              align="center"
             />
             <SortableTh label={t('common.lines')} sortKey="lines" sort={sort} onSort={setSort} style={ui.thCenter} />
             <div style={ui.tdActions} />
           </div>
+          <TablePaginationBar
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+          />
           {rows.length === 0 ? (
             <div style={ui.emptyRow}>{t('common.noGroups')}</div>
           ) : (
-            sortedRows.map((r) => (
+            pagination.pageItems.map((r) => (
               <div key={r.id} style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                 <div style={ui.cellStack}>
                   <div style={ui.tdName}>

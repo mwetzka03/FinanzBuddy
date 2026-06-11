@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Account, DashboardPeriodNavItem, DayView, DebtSummary, IsoDate, IsoMonth, MonthView, TimelineEvent } from '../lib/types';
 
 import { AmountTable } from '../components/data/AmountTable';
+import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
@@ -38,6 +39,7 @@ import {
 import { getDayView, getDebtSummary, getDashboardSettings, getMonthView, listAccounts, listDashboardPeriods, refreshDashboardCache } from '../tauri/api';
 import { isSavingsPotAccount } from '../lib/accounts';
 
+import { stockAccentColor } from '../lib/tableAccent';
 import { useUi } from '../lib/ui';
 
 import { useLocale } from '../i18n/LocaleProvider';
@@ -50,6 +52,14 @@ import { DashboardAccountSelect } from '../components/dashboard/DashboardAccount
 
 import { DashboardCard, formatDelta } from '../components/dashboard/DashboardCard';
 
+function expensesCentsFromView(m: MonthView): number {
+  return Math.max(0, m.startBalanceCents + m.incomeCents - m.endBalanceCents);
+}
+
+function prevPeriodDelta(current: number, previous: number | undefined): number | null {
+  if (previous == null) return null;
+  return current - previous;
+}
 
 function formatRunningSubtotal(filter: DashboardEventFilter, cents: number): string {
   if (filter === 'income') return formatIncomeEurFromCents(cents);
@@ -186,30 +196,49 @@ function EventsTable({
       }),
     [rows, sort],
   );
+  const pagination = useTablePagination(sortedRows);
   const tableCols = '110px 140px 1fr 120px 120px';
 
   return (
     <AmountTable>
-      <div style={{ ...ui.tableHead, gridTemplateColumns: tableCols }}>
+      <div style={{ ...ui.tableHead, gridTemplateColumns: tableCols }} className="fh-table-head">
         <SortableTh label={t('common.date')} sortKey="date" sort={sort} onSort={setSort} style={ui.thName} />
         <SortableTh label={t('dashboard.accountLabel')} sortKey="account" sort={sort} onSort={setSort} style={ui.thName} />
         <SortableTh label={t('transactions.titleField')} sortKey="title" sort={sort} onSort={setSort} style={ui.thName} />
-        <SortableTh label={t('common.amount')} sortKey="amount" sort={sort} onSort={setSort} style={ui.thAmount} align="right" />
+        <SortableTh label={t('common.amount')} sortKey="amount" sort={sort} onSort={setSort} style={ui.thAmount} align="center" />
         <SortableTh
           label={t('dashboard.runningSubtotal')}
           sortKey="subtotal"
           sort={sort}
           onSort={setSort}
           style={ui.thAmount}
-          align="right"
+          align="center"
         />
       </div>
 
+      <TablePaginationBar
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        totalItems={pagination.totalItems}
+        pageSize={pagination.pageSize}
+        onPageChange={pagination.setPage}
+      />
+
       {sortedRows.length === 0 ? (
-        <div style={ui.emptyRow}>{t('dashboard.noEvents')}</div>
+        <div style={ui.emptyRow} className="fh-empty-row">{t('dashboard.noEvents')}</div>
       ) : (
-        sortedRows.map(({ event: ev, runningSubtotalCents }) => (
-          <div key={ev.id} style={{ ...ui.tableRow, gridTemplateColumns: tableCols }}>
+        pagination.pageItems.map(({ event: ev, runningSubtotalCents }) => {
+          const accent = stockAccentColor(ev);
+          return (
+          <div
+            key={ev.id}
+            className="fh-table-row"
+            style={{
+              ...ui.tableRow,
+              ...(accent ? ui.tableRowAccent(accent) : {}),
+              gridTemplateColumns: tableCols,
+            }}
+          >
             <div style={{ ...ui.tdMono, textAlign: 'left' }}>{formatDisplayDate(ev.date)}</div>
             <div style={{ ...ui.tdName, color: ui.colors.textMuted, fontSize: 13 }}>{ev.accountName ?? '—'}</div>
             <div style={ui.tdName}>
@@ -220,11 +249,12 @@ function EventsTable({
                 ? formatEurFromCents(Math.abs(ev.amountCents))
                 : formatSignedEurFromCents(ev.amountCents)}
             </TdAmount>
-            <div style={ui.tdAmountText(runningSubtotalColorCents(filter, runningSubtotalCents))}>
+            <TdAmount col="subtotal" amountCents={runningSubtotalColorCents(filter, runningSubtotalCents)}>
               {formatRunningSubtotal(filter, runningSubtotalCents)}
-            </div>
+            </TdAmount>
           </div>
-        ))
+          );
+        })
       )}
     </AmountTable>
   );
@@ -600,8 +630,6 @@ export function DashboardPage() {
 
   const kontostandDeltaCents = kontostandCents - prevKontostandCents;
 
-  const balanceDeltaCents = endBalanceCents - startBalanceCents;
-
   const liquidDeltaCents = endLiquidCents - startLiquidCents;
 
 
@@ -654,6 +682,15 @@ export function DashboardPage() {
         ? data.variableCostsCents
         : (data.remainingVariableCostsCents ?? data.variableCostsCents ?? 0)
     : 0;
+  const prevIncomeDelta = prevPeriodDelta(comparison?.incomeCents ?? 0, prevMonthView?.incomeCents);
+  const prevExpensesDelta = prevPeriodDelta(
+    comparison?.expensesCents ?? 0,
+    prevMonthView ? expensesCentsFromView(prevMonthView) : undefined,
+  );
+  const prevBuysDelta = prevPeriodDelta(
+    data?.appliedBuysCents ?? 0,
+    prevMonthView?.appliedBuysCents,
+  );
   const kontostandSubtitle =
     data && data.kontostandAsOf !== isoToday()
       ? t('common.balanceAsOf', { date: formatDisplayDate(data.kontostandAsOf) })
@@ -821,8 +858,8 @@ export function DashboardPage() {
 
           <>
 
-            {showMonthKontostand ? (
-              <div style={showLiquidCards ? cardRow3 : cardRow2}>
+            <div style={cardRow3}>
+              {showMonthKontostand ? (
                 <DashboardCard
                   title={t('dashboard.cards.kontostand')}
                   value={formatBalanceEurFromCents(kontostandCents)}
@@ -830,34 +867,52 @@ export function DashboardPage() {
                   subtitle={kontostandSubtitle}
                   info={t('dashboard.info.kontostand')}
                 />
-                <DashboardCard
-                  title={t('dashboard.cards.startBalance')}
-                  value={formatBalanceEurFromCents(startBalanceCents)}
-                  valueColor={startBalanceCents < 0 ? ui.colors.amountNegative : undefined}
-                  info={t('dashboard.info.startBalance')}
-                />
-                {showLiquidCards ? (
-                  <DashboardCard title={t('dashboard.cards.startLiquid')} value={formatBalanceEurFromCents(startLiquidCents)} valueColor={startLiquidCents < 0 ? ui.colors.amountNegative : undefined} info={t('dashboard.info.startLiquid')} />
-                ) : null}
-              </div>
-            ) : (
-              <div style={showLiquidCards ? cardRow2 : cardRow1}>
-                <DashboardCard
-                  title={t('dashboard.cards.startBalance')}
-                  value={formatBalanceEurFromCents(startBalanceCents)}
-                  valueColor={startBalanceCents < 0 ? ui.colors.amountNegative : undefined}
-                  info={t('dashboard.info.startBalance')}
-                />
-                {showLiquidCards ? (
-                  <DashboardCard title={t('dashboard.cards.startLiquid')} value={formatBalanceEurFromCents(startLiquidCents)} valueColor={startLiquidCents < 0 ? ui.colors.amountNegative : undefined} info={t('dashboard.info.startLiquid')} />
-                ) : null}
-              </div>
-            )}
+              ) : (
+                <div />
+              )}
+              <DashboardCard
+                title={t('dashboard.cards.startBalance')}
+                value={formatBalanceEurFromCents(startBalanceCents)}
+                valueColor={startBalanceCents < 0 ? ui.colors.amountNegative : undefined}
+                info={t('dashboard.info.startBalance')}
+              />
+              <DashboardCard
+                title={incomeCardTitle}
+                value={formatIncomeEurFromCents(comparison.incomeCents)}
+                info={t('dashboard.info.income')}
+                active={eventFilter === 'income'}
+                onClick={() => toggleEventFilter('income')}
+                inlineDelta={
+                  prevIncomeDelta != null
+                    ? { cents: prevIncomeDelta, tooltip: t('dashboard.info.incomeDeltaPrev') }
+                    : undefined
+                }
+              />
+            </div>
 
             <div style={cardRow3}>
-
-              <DashboardCard title={incomeCardTitle} value={formatIncomeEurFromCents(comparison.incomeCents)} info={t('dashboard.info.income')} active={eventFilter === 'income'} onClick={() => toggleEventFilter('income')} />
-
+              {showForecastExpenseCards ? (
+                <DashboardCard
+                  title={isPastPeriod || isFuturePeriod ? t('dashboard.cards.fixedCosts') : t('dashboard.cards.remainingFixedCosts')}
+                  value={formatExpenseEurFromCents(fixedCostsTileCents)}
+                  info={isPastPeriod || isFuturePeriod ? t('dashboard.info.fixedCosts') : t('dashboard.info.remainingFixedCosts')}
+                  active={eventFilter === 'fixed_cost'}
+                  onClick={() => toggleEventFilter('fixed_cost')}
+                />
+              ) : (
+                <div />
+              )}
+              {showForecastExpenseCards ? (
+                <DashboardCard
+                  title={isPastPeriod || isFuturePeriod ? t('dashboard.cards.variableCosts') : t('dashboard.cards.remainingVariableCosts')}
+                  value={formatExpenseEurFromCents(variableCostsTileCents)}
+                  info={isPastPeriod || isFuturePeriod ? t('dashboard.info.variableCosts') : t('dashboard.info.remainingVariableCosts')}
+                  active={eventFilter === 'variable_cost'}
+                  onClick={() => toggleEventFilter('variable_cost')}
+                />
+              ) : (
+                <div />
+              )}
               <DashboardCard
                 title={expenseCardTitle}
                 value={formatExpenseEurFromCents(comparison.expensesCents)}
@@ -865,108 +920,79 @@ export function DashboardPage() {
                 info={t('dashboard.info.expenses')}
                 active={eventFilter === 'expense'}
                 onClick={() => toggleEventFilter('expense')}
+                inlineDelta={
+                  prevExpensesDelta != null
+                    ? { cents: prevExpensesDelta, tooltip: t('dashboard.info.expensesDeltaPrev'), invertColors: true }
+                    : undefined
+                }
               />
-
-              <DashboardCard
-
-                title={t('dashboard.cards.net')}
-
-                value={formatSignedEurFromCents(comparison.netCents)}
-
-                valueColor={comparison.netCents >= 0 ? ui.colors.amountPositive : ui.colors.amountNegative}
-
-                info={t('dashboard.info.net')}
-
-              />
-
             </div>
 
-            {showForecastExpenseCards ? (
             <div style={cardRow3}>
-
-              <DashboardCard
-
-                title={isPastPeriod || isFuturePeriod ? t('dashboard.cards.fixedCosts') : t('dashboard.cards.remainingFixedCosts')}
-
-                value={formatExpenseEurFromCents(fixedCostsTileCents)}
-
-                info={isPastPeriod || isFuturePeriod ? t('dashboard.info.fixedCosts') : t('dashboard.info.remainingFixedCosts')}
-
-                active={eventFilter === 'fixed_cost'}
-
-                onClick={() => toggleEventFilter('fixed_cost')}
-
-              />
-
-              <DashboardCard
-
-                title={isPastPeriod || isFuturePeriod ? t('dashboard.cards.variableCosts') : t('dashboard.cards.remainingVariableCosts')}
-
-                value={formatExpenseEurFromCents(variableCostsTileCents)}
-
-                info={isPastPeriod || isFuturePeriod ? t('dashboard.info.variableCosts') : t('dashboard.info.remainingVariableCosts')}
-
-                active={eventFilter === 'variable_cost'}
-
-                onClick={() => toggleEventFilter('variable_cost')}
-
-              />
-
-              <DashboardCard title={t('dashboard.cards.buys')} value={formatExpenseEurFromCents(data.appliedBuysCents)} info={t('dashboard.info.buys')} active={eventFilter === 'buy'} onClick={() => toggleEventFilter('buy')} />
-
-            </div>
-            ) : null}
-
-            {showLiquidCards ? (
-            <div style={cardRow2}>
-
-              <DashboardCard title={t('dashboard.cards.debtOwed')} value={formatEurFromCents(debtSummary?.owedToMeCents ?? 0)} valueColor={ui.colors.accentDark} info={t('dashboard.info.debtOwed')} />
-
-              <DashboardCard title={t('dashboard.cards.debtIOwe')} value={formatEurFromCents(debtSummary?.iOweCents ?? 0)} valueColor={ui.colors.amountNegative} info={t('dashboard.info.debtIOwe')} />
-
-            </div>
-            ) : null}
-
-            <div style={showLiquidCards ? cardRow4 : cardRow2}>
-
               <DashboardCard
                 title={t('dashboard.cards.endBalance')}
                 value={formatBalanceEurFromCents(endBalanceCents)}
                 valueColor={endBalanceCents < 0 ? ui.colors.amountNegative : undefined}
                 info={t('dashboard.info.endBalance')}
               />
-
+              {showForecastExpenseCards ? (
+                <DashboardCard
+                  title={t('dashboard.cards.buys')}
+                  value={formatExpenseEurFromCents(data.appliedBuysCents)}
+                  info={t('dashboard.info.buys')}
+                  active={eventFilter === 'buy'}
+                  onClick={() => toggleEventFilter('buy')}
+                  inlineDelta={
+                    prevBuysDelta != null
+                      ? { cents: prevBuysDelta, tooltip: t('dashboard.info.buysDeltaPrev'), invertColors: true }
+                      : undefined
+                  }
+                />
+              ) : (
+                <div />
+              )}
               <DashboardCard
-
-                title={t('dashboard.cards.deltaBalance')}
-
-                value={formatDelta(balanceDeltaCents)}
-
-                valueColor={balanceDeltaCents >= 0 ? ui.colors.amountPositive : ui.colors.amountNegative}
-
-                info={t('dashboard.info.deltaBalance')}
-
+                title={t('dashboard.cards.net')}
+                value={formatSignedEurFromCents(comparison.netCents)}
+                valueColor={comparison.netCents >= 0 ? ui.colors.amountPositive : ui.colors.amountNegative}
+                info={t('dashboard.info.net')}
               />
-
-              {showLiquidCards ? (
-                <>
-              <DashboardCard title={t('dashboard.cards.endLiquid')} value={formatBalanceEurFromCents(endLiquidCents)} valueColor={endLiquidCents < 0 ? ui.colors.amountNegative : undefined} info={t('dashboard.info.endLiquid')} />
-
-              <DashboardCard
-
-                title={t('dashboard.cards.deltaLiquid')}
-
-                value={formatDelta(liquidDeltaCents)}
-
-                valueColor={liquidDeltaCents >= 0 ? ui.colors.amountPositive : ui.colors.amountNegative}
-
-                info={t('dashboard.info.deltaLiquid')}
-
-              />
-                </>
-              ) : null}
-
             </div>
+
+            {showLiquidCards ? (
+              <div style={{ ...cardRow2, marginBottom: 12 }}>
+                <DashboardCard
+                  title={t('dashboard.cards.startLiquid')}
+                  value={formatBalanceEurFromCents(startLiquidCents)}
+                  valueColor={startLiquidCents < 0 ? ui.colors.amountNegative : undefined}
+                  info={t('dashboard.info.startLiquid')}
+                />
+                <DashboardCard
+                  title={t('dashboard.cards.endLiquid')}
+                  value={formatBalanceEurFromCents(endLiquidCents)}
+                  valueColor={endLiquidCents < 0 ? ui.colors.amountNegative : undefined}
+                  info={t('dashboard.info.endLiquid')}
+                  inlineDelta={{ cents: liquidDeltaCents, tooltip: t('dashboard.info.deltaLiquid') }}
+                />
+              </div>
+            ) : null}
+
+            {showLiquidCards ? (
+              <div style={{ ...cardRow2, marginBottom: 16 }}>
+                <DashboardCard
+                  title={t('dashboard.cards.debtOwed')}
+                  value={formatEurFromCents(debtSummary?.owedToMeCents ?? 0)}
+                  valueColor={ui.colors.accentDark}
+                  info={t('dashboard.info.debtOwed')}
+                />
+                <DashboardCard
+                  title={t('dashboard.cards.debtIOwe')}
+                  value={formatEurFromCents(debtSummary?.iOweCents ?? 0)}
+                  valueColor={ui.colors.amountNegative}
+                  info={t('dashboard.info.debtIOwe')}
+                />
+              </div>
+            ) : null}
 
             <h3 style={{ marginTop: 0 }}>
 
