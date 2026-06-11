@@ -13,6 +13,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -39,8 +41,28 @@ jobs:
           Copy-Item src-tauri/target/release/finanzbuddy.exe release-assets/FinanzBuddy.exe
           Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Copy-Item -Destination release-assets/
 
+      - name: Load release notes
+        id: notes
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES_FILE=".github/release-notes/v${VERSION}.md"
+          git fetch origin main --depth=1 2>/dev/null || true
+          if git show "origin/main:${NOTES_FILE}" > release-notes.md 2>/dev/null; then
+            echo "use_custom=true" >> "$GITHUB_OUTPUT"
+            echo "Loaded ${NOTES_FILE} from origin/main"
+          elif [ -f "${NOTES_FILE}" ]; then
+            cp "${NOTES_FILE}" release-notes.md
+            echo "use_custom=true" >> "$GITHUB_OUTPUT"
+            echo "Loaded ${NOTES_FILE} from tagged commit"
+          else
+            echo "use_custom=false" >> "$GITHUB_OUTPUT"
+            echo "No custom release notes found for v${VERSION}"
+          fi
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.use_custom == 'true' && 'release-notes.md' || '' }}
+          generate_release_notes: ${{ steps.notes.outputs.use_custom != 'true' }}
