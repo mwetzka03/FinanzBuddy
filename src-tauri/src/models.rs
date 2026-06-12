@@ -203,10 +203,19 @@ pub struct DashboardPeriodNavItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AccountKontostandRow {
+  pub account_id: String,
+  pub account_name: String,
+  pub balance_cents: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MonthView {
   pub month: String,
   pub start_balance_cents: i64, // sum across all accounts
   pub income_cents: i64,
+  pub expense_cents: i64,
   pub fixed_costs_cents: i64,
   pub variable_costs_cents: i64,
   pub remaining_fixed_costs_cents: i64,
@@ -236,6 +245,9 @@ pub struct MonthView {
   pub period_is_current: bool,
   pub booked_fixed_costs_cents: i64,
   pub booked_variable_costs_cents: i64,
+  pub account_kontostand_rows: Vec<AccountKontostandRow>,
+  pub account_start_balance_rows: Vec<AccountKontostandRow>,
+  pub account_end_balance_rows: Vec<AccountKontostandRow>,
   pub events: Vec<TimelineEvent>,
 }
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Account } from '../../lib/types';
-import { buildAccountTreeRows, effectiveAccountKind, isOberspartopf } from '../../lib/accounts';
+import { buildDashboardAccountTreeRows, effectiveAccountKind, isOberspartopf } from '../../lib/accounts';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { useTheme } from '../../lib/theme';
 import { useUi } from '../../lib/ui';
@@ -47,7 +47,7 @@ export function DashboardAccountSelect(props: {
   const [open, setOpen] = useState(false);
   const showAllOption = props.showAllOption ?? true;
 
-  const treeRows = useMemo(() => buildAccountTreeRows(props.accounts), [props.accounts]);
+  const treeRows = useMemo(() => buildDashboardAccountTreeRows(props.accounts), [props.accounts]);
 
   const selected = useMemo(
     () => (props.value ? props.accounts.find((a) => a.id === props.value) ?? null : null),

@@ -12,6 +12,7 @@ import {
   sellStockHolding,
   updateStockLot,
 } from '../tauri/api';
+import { patchStockPortfolioCache, removeFromStockPortfolioCache } from '../lib/stockPortfolioCache';
 import { useLocale } from '../i18n/LocaleProvider';
 import { useUi } from '../lib/ui';
 import { StockPriceChart } from '../components/stocks/StockPriceChart';
@@ -62,9 +63,20 @@ export function StockDetailPage() {
   const [editBuyPrice, setEditBuyPrice] = useState('');
   const [editShares, setEditShares] = useState('');
 
-  async function refreshDetail() {
+  async function refreshDetail(options?: { skipQuotes?: boolean }) {
     if (!id) return;
-    setDetail(await getStockPositionDetail(id));
+    const next = await getStockPositionDetail(id, options);
+    setDetail(next);
+    return next;
+  }
+
+  async function syncPortfolioFromDetail(options?: { skipQuotes?: boolean }) {
+    if (!id) return null;
+    const next = await refreshDetail(options);
+    if (next) {
+      patchStockPortfolioCache(next.position);
+    }
+    return next;
   }
 
   async function refreshChart(symbol: string, range: StockChartRange) {
@@ -130,8 +142,10 @@ export function StockDetailPage() {
     setError(null);
     await deleteStockLot(lotId);
     try {
-      await refreshDetail();
+      await syncPortfolioFromDetail({ skipQuotes: true });
+      void refreshDetail();
     } catch {
+      removeFromStockPortfolioCache(id);
       navigate('/aktien');
     }
   }
@@ -146,7 +160,8 @@ export function StockDetailPage() {
       shares: Number(editShares.replace(',', '.')),
     });
     setEditLot(null);
-    await refreshDetail();
+    await syncPortfolioFromDetail({ skipQuotes: true });
+    void refreshDetail();
   }
 
   async function onSell() {
@@ -165,8 +180,10 @@ export function StockDetailPage() {
     });
     setSellOpen(false);
     if (stillExists) {
-      await refreshDetail();
+      await syncPortfolioFromDetail({ skipQuotes: true });
+      void refreshDetail();
     } else {
+      removeFromStockPortfolioCache(id);
       navigate('/aktien');
     }
   }
@@ -243,16 +260,12 @@ export function StockDetailPage() {
       <section style={{ ...ui.listPanel, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
           <h3 style={{ margin: 0 }}>{t('stocks.chartTitle')}</h3>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div className="fh-segment fh-chart-range" role="group" aria-label={t('stocks.chartTitle')}>
             {CHART_RANGES.map((r) => (
               <button
                 key={r.id}
                 type="button"
-                style={{
-                  ...ui.btn,
-                  background: chartRange === r.id ? ui.colors.accentSoft : undefined,
-                  fontWeight: chartRange === r.id ? 600 : 400,
-                }}
+                className={chartRange === r.id ? 'active' : ''}
                 onClick={() => setChartRange(r.id)}
               >
                 {r.label}
@@ -338,7 +351,8 @@ export function StockDetailPage() {
           preset={buyPreset}
           onClose={() => setBuyOpen(false)}
           onCreated={async () => {
-            await refreshDetail();
+            await syncPortfolioFromDetail({ skipQuotes: true });
+            void refreshDetail();
           }}
           onError={setError}
         />

@@ -189,6 +189,7 @@ export interface MonthView {
   month: IsoMonth;
   startBalanceCents: number;
   incomeCents: number;
+  expenseCents: number;
   fixedCostsCents: number;
   variableCostsCents: number;
   remainingFixedCostsCents: number;
@@ -211,7 +212,16 @@ export interface MonthView {
   periodIsCurrent: boolean;
   bookedFixedCostsCents: number;
   bookedVariableCostsCents: number;
+  accountKontostandRows: AccountKontostandRow[];
+  accountStartBalanceRows: AccountKontostandRow[];
+  accountEndBalanceRows: AccountKontostandRow[];
   events: TimelineEvent[];
+}
+
+export interface AccountKontostandRow {
+  accountId: string;
+  accountName: string;
+  balanceCents: number;
 }
 
 export interface DayView {

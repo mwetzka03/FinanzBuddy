@@ -9,12 +9,14 @@ use super::helpers::{
   to_cmd_result, CmdResult,
 };
 use super::prognostic::kontostand_total_cents;
+use crate::dashboard_accounts::compute_all_accounts_balance_totals;
 use crate::accounts::get_main_account_id;
 use crate::calc_log::calc_log;
 use crate::dashboard_cache;
 use crate::dashboard_compute::{compute_dashboard_chain, compute_salary_period_chain, months_from_to, MonthPeriodInput};
 use crate::dashboard_flow::{
   aggregate_all_accounts_card_flows, aggregate_liquid_flows, aggregate_period_flows, aggregate_real_period_flows,
+  stock_purchase_expense_cents,
   end_balance_from_start,
 };
 use crate::dashboard_period::{current_salary_period, list_salary_periods, salary_period_dashboard};
@@ -251,7 +253,7 @@ fn compute_month_view(
     .map(|(id, _)| id.clone())
     .collect();
 
-  let (view_month, period, prev_range_end, balances) = if period_mode == "since_last_salary" {
+  let (view_month, period, prev_range_end, balances, chain_period_inputs, chain_lookup_key) = if period_mode == "since_last_salary" {
     let all_periods = list_salary_periods(&conn)?;
     let selected_start = period_start
       .or_else(|| current_salary_period(&conn).ok().map(|p| p.period_start))
@@ -274,15 +276,11 @@ fn compute_month_view(
       } else {
         view_month.clone()
       };
-      let (cal_start, cal_end) = month_bounds(&chain_month)
-        .ok_or_else(|| AppError::Invalid("invalid month".into()))?;
       let built = build_dashboard_month_events(
         &conn,
         &chain_month,
         &account_id,
         &p,
-        &iso_date(cal_start),
-        &iso_date(cal_end),
       )?;
       period_inputs.push(MonthPeriodInput {
         month: chain_month,
@@ -311,7 +309,7 @@ fn compute_month_view(
       .map(|sp| sp.period_end.clone())
       .unwrap_or_else(|| period.period_start.clone());
 
-    (view_month, period, prev_end, balances.clone())
+    (view_month, period, prev_end, balances.clone(), period_inputs, selected_start)
   } else {
     let (start, end) = month_bounds(&month).ok_or_else(|| AppError::Invalid("month must be YYYY-MM".into()))?;
     let range_start = iso_date(start);
@@ -321,16 +319,12 @@ fn compute_month_view(
 
     let mut month_inputs = Vec::new();
     for chain_month in &chain_months {
-      let (cal_start, cal_end) = month_bounds(chain_month)
-        .ok_or_else(|| AppError::Invalid("invalid month".into()))?;
       let p = crate::dashboard_period::effective_period_for_month(&conn, chain_month)?;
       let built = build_dashboard_month_events(
         &conn,
         chain_month,
         &account_id,
         &p,
-        &iso_date(cal_start),
-        &iso_date(cal_end),
       )?;
       month_inputs.push(MonthPeriodInput {
         month: chain_month.clone(),
@@ -358,20 +352,17 @@ fn compute_month_view(
     let prev_end = month_bounds(&prev_month)
       .map(|(_, end)| iso_date(end))
       .unwrap_or_else(|| range_start.clone());
-    (month.clone(), period, prev_end, balances)
+    (month.clone(), period, prev_end, balances.clone(), month_inputs, month.clone())
   };
 
+  let period_mode_str = period_mode.clone();
   let period_start = period.period_start.clone();
   let period_end = period.period_end.clone();
-  let (cal_start, cal_end) = month_bounds(&view_month)
-    .ok_or_else(|| AppError::Invalid("invalid month".into()))?;
   let built = build_dashboard_month_events(
     &conn,
     &view_month,
     &account_id,
     &period,
-    &iso_date(cal_start),
-    &iso_date(cal_end),
   )?;
 
   let today = Utc::now().date_naive().format("%Y-%m-%d").to_string();
@@ -425,8 +416,8 @@ fn compute_month_view(
     period_flows
   };
 
-  let start_balance_cents = balances.start_balance_cents;
   let start_liquid_cents = balances.start_liquid_cents;
+  let chain_start_balance_cents = balances.start_balance_cents;
 
   let real_flows_to_today = aggregate_real_period_flows(
     &built.events,
@@ -439,6 +430,16 @@ fn compute_month_view(
     None => false,
   };
   let use_depot_cost_basis = is_depot_filter && (!period_is_current || today.as_str() > period_end.as_str());
+
+  let all_accounts_view = account_id.is_none();
+  let min_month = crate::dashboard_period::dashboard_min_month(&conn)?;
+
+  let mut account_kontostand_rows = Vec::new();
+  let mut account_start_balance_rows = Vec::new();
+  let mut account_end_balance_rows = Vec::new();
+
+  let cards_start_balance_cents = chain_start_balance_cents;
+
   let kontostand_as_of_date = if is_depot_filter {
     if period_is_current {
       as_of.as_str()
@@ -448,19 +449,7 @@ fn compute_month_view(
   } else {
     as_of.as_str()
   };
-  let kontostand = if is_depot_filter {
-    kontostand_total_cents(
-      &conn,
-      kontostand_as_of_date,
-      &account_id,
-      stock_portfolio_cents,
-      use_depot_cost_basis,
-    )?
-  } else {
-    start_balance_cents + real_flows_to_today.net_cents()
-  };
 
-  let prognose_end_balance = end_balance_from_start(start_balance_cents, &period_flows);
   let remaining_buys_cents: i64 = built
     .events
     .iter()
@@ -468,16 +457,60 @@ fn compute_month_view(
     .map(|ev| ev.amount_cents.abs())
     .sum();
 
-  let end_balance_cents = if is_depot_filter {
-    kontostand
-  } else if period_is_current
-    && remaining_fixed == 0
-    && remaining_variable == 0
-    && remaining_buys_cents == 0
-  {
-    kontostand
+  let (start_balance_cents, kontostand, end_balance_cents) = if all_accounts_view {
+    let totals = compute_all_accounts_balance_totals(
+      &conn,
+      &state,
+      &main_id,
+      &period_mode_str,
+      &chain_lookup_key,
+      &min_month,
+      &chain_period_inputs,
+      &view_month,
+      &period,
+      &prev_range_end,
+      &period_start,
+      &period_end,
+      &as_of,
+      period_is_current,
+      &liquid_account_ids,
+      stock_portfolio_cents,
+    )?;
+    account_kontostand_rows = totals.kontostand_rows;
+    account_start_balance_rows = totals.start_rows;
+    account_end_balance_rows = totals.end_rows;
+    (
+      totals.total_start_balance_cents,
+      totals.total_kontostand_cents,
+      totals.total_end_balance_cents,
+    )
   } else {
-    prognose_end_balance
+    let kontostand = if is_depot_filter {
+      kontostand_total_cents(
+        &conn,
+        kontostand_as_of_date,
+        &account_id,
+        stock_portfolio_cents,
+        use_depot_cost_basis,
+      )?
+    } else {
+      chain_start_balance_cents + real_flows_to_today.net_cents()
+    };
+
+    let prognose_end_balance = end_balance_from_start(chain_start_balance_cents, &period_flows);
+
+    let end_balance_cents = if is_depot_filter
+      || (period_is_current
+        && remaining_fixed == 0
+        && remaining_variable == 0
+        && remaining_buys_cents == 0)
+    {
+      kontostand
+    } else {
+      prognose_end_balance
+    };
+
+    (cards_start_balance_cents, kontostand, end_balance_cents)
   };
 
   let end_liquid_cents = if account_id.is_none() {
@@ -493,7 +526,8 @@ fn compute_month_view(
   };
 
   let expense_cents = if account_id.is_none() {
-    liquid_card_flows.expense_cents
+    period_flows.expense_cents
+      + stock_purchase_expense_cents(&built.events, &period_start, &period_end)
   } else {
     period_flows.expense_cents
   };
@@ -516,6 +550,7 @@ fn compute_month_view(
     month: view_month,
     start_balance_cents,
     income_cents,
+    expense_cents,
     fixed_costs_cents: built.fixed_costs_sum,
     variable_costs_cents: built.variable_costs_sum,
     remaining_fixed_costs_cents: remaining_fixed,
@@ -538,6 +573,9 @@ fn compute_month_view(
     period_is_current,
     booked_fixed_costs_cents: booked_fixed,
     booked_variable_costs_cents: booked_variable,
+    account_kontostand_rows,
+    account_start_balance_rows,
+    account_end_balance_rows,
     events: built.events,
   })
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import type { Account, DashboardPeriodNavItem, DayView, DebtSummary, IsoDate, IsoMonth, MonthView, TimelineEvent } from '../lib/types';
+import type { Account, AccountKontostandRow, DashboardPeriodNavItem, DayView, DebtSummary, IsoDate, IsoMonth, MonthView, TimelineEvent } from '../lib/types';
 
 import { AmountTable } from '../components/data/AmountTable';
 import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
@@ -37,7 +37,7 @@ import {
 } from '../lib/summary';
 
 import { getDayView, getDebtSummary, getDashboardSettings, getMonthView, listAccounts, listDashboardPeriods, refreshDashboardCache } from '../tauri/api';
-import { isSavingsPotAccount } from '../lib/accounts';
+import { buildDashboardAccountTreeRows, isSavingsPotAccount } from '../lib/accounts';
 
 import { stockAccentColor } from '../lib/tableAccent';
 import { useUi } from '../lib/ui';
@@ -53,7 +53,7 @@ import { DashboardAccountSelect } from '../components/dashboard/DashboardAccount
 import { DashboardCard, formatDelta } from '../components/dashboard/DashboardCard';
 
 function expensesCentsFromView(m: MonthView): number {
-  return Math.max(0, m.startBalanceCents + m.incomeCents - m.endBalanceCents);
+  return m.expenseCents;
 }
 
 function prevPeriodDelta(current: number, previous: number | undefined): number | null {
@@ -162,6 +162,93 @@ function EventTitleCell({ ev, onGroupClick }: { ev: TimelineEvent; onGroupClick?
     );
   }
   return <div>{ev.title}</div>;
+}
+
+function AccountBalanceBreakdownTable({
+  rows,
+  accounts,
+  amountLabel,
+}: {
+  rows: AccountKontostandRow[];
+  accounts: Account[];
+  amountLabel: string;
+}) {
+  const ui = useUi();
+  const { t } = useLocale();
+  type RowSortKey = 'account' | 'balance' | 'subtotal';
+  const [sort, setSort] = useState<SortState<RowSortKey>>(null);
+
+  const sortedRows = useMemo(() => {
+    const byId = new Map(rows.map((r) => [r.accountId, r]));
+    const ordered: AccountKontostandRow[] = [];
+    for (const { account } of buildDashboardAccountTreeRows(accounts)) {
+      const row = byId.get(account.id);
+      if (row) ordered.push(row);
+    }
+    for (const row of rows) {
+      if (!ordered.some((r) => r.accountId === row.accountId)) ordered.push(row);
+    }
+    let running = 0;
+    return ordered.map((row) => {
+      running += row.balanceCents;
+      return { row, runningSubtotalCents: running };
+    });
+  }, [rows, accounts]);
+
+  const displayRows = useMemo(
+    () =>
+      sortByState(sortedRows, sort, {
+        account: (r) => r.row.accountName,
+        balance: (r) => r.row.balanceCents,
+        subtotal: (r) => r.runningSubtotalCents,
+      }),
+    [sortedRows, sort],
+  );
+  const pagination = useTablePagination(displayRows);
+  const tableCols = '1fr 160px 160px';
+
+  return (
+    <AmountTable>
+      <div style={{ ...ui.tableHead, gridTemplateColumns: tableCols }} className="fh-table-head">
+        <SortableTh label={t('dashboard.accountLabel')} sortKey="account" sort={sort} onSort={setSort} style={ui.thName} />
+        <SortableTh label={amountLabel} sortKey="balance" sort={sort} onSort={setSort} style={ui.thAmount} align="center" />
+        <SortableTh
+          label={t('dashboard.runningSubtotal')}
+          sortKey="subtotal"
+          sort={sort}
+          onSort={setSort}
+          style={ui.thAmount}
+          align="center"
+        />
+      </div>
+      <TablePaginationBar
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        totalItems={pagination.totalItems}
+        pageSize={pagination.pageSize}
+        onPageChange={pagination.setPage}
+      />
+      {displayRows.length === 0 ? (
+        <div style={ui.emptyRow} className="fh-empty-row">{t('dashboard.noEvents')}</div>
+      ) : (
+        pagination.pageItems.map(({ row, runningSubtotalCents }) => (
+          <div
+            key={row.accountId}
+            className="fh-table-row"
+            style={{ ...ui.tableRow, gridTemplateColumns: tableCols }}
+          >
+            <div style={ui.tdName}>{row.accountName}</div>
+            <TdAmount col="balance" amountCents={row.balanceCents}>
+              {formatBalanceEurFromCents(row.balanceCents)}
+            </TdAmount>
+            <TdAmount col="subtotal" amountCents={runningSubtotalCents}>
+              {formatBalanceEurFromCents(runningSubtotalCents)}
+            </TdAmount>
+          </div>
+        ))
+      )}
+    </AmountTable>
+  );
 }
 
 function EventsTable({
@@ -309,6 +396,7 @@ export function DashboardPage() {
   } | null>(null);
 
   const [eventFilter, setEventFilter] = useState<DashboardEventFilter>('all');
+  const [tableMode, setTableMode] = useState<'events' | 'kontostand' | 'startBalance' | 'endBalance'>('events');
 
   const [error, setError] = useState<string | null>(null);
 
@@ -375,6 +463,10 @@ export function DashboardPage() {
   const showForecastExpenseCards = !isSavingsPotView;
 
   const isStockDepot = selectedAccount?.balanceSource === 'stock_portfolio';
+
+  useEffect(() => {
+    setTableMode('events');
+  }, [accountFilter]);
 
   const canGoPrevMonth = useSalaryPeriodNav ? periodIndex > 0 : month > minMonth;
   const canGoNextMonth = useSalaryPeriodNav
@@ -499,11 +591,8 @@ export function DashboardPage() {
           setPrevMonthView(prevMonthData);
 
           const incomeCents = monthData.incomeCents;
-          const expensesCents = Math.max(
-            0,
-            monthData.startBalanceCents + monthData.incomeCents - monthData.endBalanceCents,
-          );
-          const netCents = monthData.endBalanceCents - monthData.startBalanceCents;
+          const expensesCents = monthData.expenseCents;
+          const netCents = monthData.incomeCents - monthData.expenseCents;
 
           let startBalanceCents = monthData.startBalanceCents;
           let endBalanceCents = monthData.endBalanceCents;
@@ -691,6 +780,8 @@ export function DashboardPage() {
     data?.appliedBuysCents ?? 0,
     prevMonthView?.appliedBuysCents,
   );
+  const balanceDeltaCents = endBalanceCents - startBalanceCents;
+
   const kontostandSubtitle =
     data && data.kontostandAsOf !== isoToday()
       ? t('common.balanceAsOf', { date: formatDisplayDate(data.kontostandAsOf) })
@@ -711,11 +802,39 @@ export function DashboardPage() {
 
 
 
-  function toggleEventFilter(next: DashboardEventFilter) {
-
-    setEventFilter((cur) => (cur === next ? 'all' : next));
-
+  function setBreakdownMode(next: typeof tableMode) {
+    setTableMode((cur) => {
+      const mode = cur === next ? 'events' : next;
+      if (mode !== 'events') setEventFilter('all');
+      return mode;
+    });
   }
+
+  function toggleEventFilter(next: DashboardEventFilter) {
+    setTableMode('events');
+    setEventFilter((cur) => (cur === next ? 'all' : next));
+  }
+
+  const hasAccountBreakdown = !accountId && (data?.accountKontostandRows.length ?? 0) > 0;
+  const showKontostandBreakdown = tableMode === 'kontostand' && hasAccountBreakdown;
+  const showStartBalanceBreakdown = tableMode === 'startBalance' && hasAccountBreakdown;
+  const showEndBalanceBreakdown = tableMode === 'endBalance' && hasAccountBreakdown;
+  const showBalanceBreakdown = showKontostandBreakdown || showStartBalanceBreakdown || showEndBalanceBreakdown;
+  const breakdownRows = showStartBalanceBreakdown
+    ? data?.accountStartBalanceRows ?? []
+    : showEndBalanceBreakdown
+      ? data?.accountEndBalanceRows ?? []
+      : data?.accountKontostandRows ?? [];
+  const breakdownTitle = showStartBalanceBreakdown
+    ? t('dashboard.startBalanceBreakdown')
+    : showEndBalanceBreakdown
+      ? t('dashboard.endBalanceBreakdown')
+      : t('dashboard.kontostandBreakdown');
+  const breakdownAmountLabel = showStartBalanceBreakdown
+    ? t('dashboard.cards.startBalance')
+    : showEndBalanceBreakdown
+      ? t('dashboard.cards.endBalance')
+      : t('dashboard.cards.kontostand');
 
 
 
@@ -854,6 +973,81 @@ export function DashboardPage() {
 
           </>
 
+        ) : isSavingsPotView ? (
+
+          <>
+
+            <div style={showMonthKontostand ? cardRow3 : cardRow2}>
+              {showMonthKontostand ? (
+                <DashboardCard
+                  title={t('dashboard.cards.kontostand')}
+                  value={formatBalanceEurFromCents(kontostandCents)}
+                  valueColor={kontostandCents < 0 ? ui.colors.amountNegative : undefined}
+                  subtitle={kontostandSubtitle}
+                  info={t('dashboard.info.kontostand')}
+                />
+              ) : null}
+              <DashboardCard
+                title={t('dashboard.cards.startBalance')}
+                value={formatBalanceEurFromCents(startBalanceCents)}
+                valueColor={startBalanceCents < 0 ? ui.colors.amountNegative : undefined}
+                info={t('dashboard.info.startBalance')}
+              />
+              <DashboardCard
+                title={t('dashboard.cards.endBalance')}
+                value={formatBalanceEurFromCents(endBalanceCents)}
+                valueColor={endBalanceCents < 0 ? ui.colors.amountNegative : undefined}
+                info={t('dashboard.info.endBalance')}
+                inlineDelta={{ cents: balanceDeltaCents, tooltip: t('dashboard.info.deltaBalance') }}
+              />
+            </div>
+
+            <div style={cardRow3}>
+              <DashboardCard
+                title={incomeCardTitle}
+                value={formatIncomeEurFromCents(comparison.incomeCents)}
+                info={t('dashboard.info.income')}
+                active={eventFilter === 'income'}
+                onClick={() => toggleEventFilter('income')}
+                inlineDelta={
+                  prevIncomeDelta != null
+                    ? { cents: prevIncomeDelta, tooltip: t('dashboard.info.incomeDeltaPrev') }
+                    : undefined
+                }
+              />
+              <DashboardCard
+                title={expenseCardTitle}
+                value={formatExpenseEurFromCents(comparison.expensesCents)}
+                valueColor={comparison.expensesCents > 0 ? ui.colors.amountNegative : ui.colors.textMuted}
+                info={t('dashboard.info.expenses')}
+                active={eventFilter === 'expense'}
+                onClick={() => toggleEventFilter('expense')}
+                inlineDelta={
+                  prevExpensesDelta != null
+                    ? { cents: prevExpensesDelta, tooltip: t('dashboard.info.expensesDeltaPrev'), invertColors: true }
+                    : undefined
+                }
+              />
+              <DashboardCard
+                title={t('dashboard.cards.net')}
+                value={formatSignedEurFromCents(comparison.netCents)}
+                valueColor={comparison.netCents >= 0 ? ui.colors.amountPositive : ui.colors.amountNegative}
+                info={t('dashboard.info.net')}
+              />
+            </div>
+
+            <h3 style={{ marginTop: 0 }}>{t('dashboard.events')}</h3>
+
+            <EventsTable
+              events={eventFilter === 'all' ? monthEvents : filteredEvents}
+              filter={eventFilter}
+              accountFilter={accountId}
+              isStockDepot={isStockDepot}
+              onGroupClick={openBuyGroup}
+            />
+
+          </>
+
         ) : (
 
           <>
@@ -866,6 +1060,8 @@ export function DashboardPage() {
                   valueColor={kontostandCents < 0 ? ui.colors.amountNegative : undefined}
                   subtitle={kontostandSubtitle}
                   info={t('dashboard.info.kontostand')}
+                  active={tableMode === 'kontostand'}
+                  onClick={hasAccountBreakdown ? () => setBreakdownMode('kontostand') : undefined}
                 />
               ) : (
                 <div />
@@ -944,12 +1140,21 @@ export function DashboardPage() {
                 value={formatBalanceEurFromCents(startBalanceCents)}
                 valueColor={startBalanceCents < 0 ? ui.colors.amountNegative : undefined}
                 info={t('dashboard.info.startBalance')}
+                active={tableMode === 'startBalance'}
+                onClick={hasAccountBreakdown ? () => setBreakdownMode('startBalance') : undefined}
               />
               <DashboardCard
                 title={t('dashboard.cards.endBalance')}
                 value={formatBalanceEurFromCents(endBalanceCents)}
                 valueColor={endBalanceCents < 0 ? ui.colors.amountNegative : undefined}
                 info={t('dashboard.info.endBalance')}
+                active={tableMode === 'endBalance'}
+                onClick={hasAccountBreakdown ? () => setBreakdownMode('endBalance') : undefined}
+                inlineDelta={
+                  showLiquidCards
+                    ? { cents: balanceDeltaCents, tooltip: t('dashboard.info.deltaBalance') }
+                    : undefined
+                }
               />
               <DashboardCard
                 title={t('dashboard.cards.net')}
@@ -995,28 +1200,32 @@ export function DashboardPage() {
             ) : null}
 
             <h3 style={{ marginTop: 0 }}>
-
-              {t('dashboard.events')}
-
-              {eventFilter !== 'all' && (
-
-                <button type="button" style={{ ...ui.btn, marginLeft: 12, fontSize: 12, padding: '4px 10px' }} onClick={() => setEventFilter('all')}>
-
+              {showBalanceBreakdown ? breakdownTitle : t('dashboard.events')}
+              {(eventFilter !== 'all' || showBalanceBreakdown) && (
+                <button
+                  type="button"
+                  style={{ ...ui.btn, marginLeft: 12, fontSize: 12, padding: '4px 10px' }}
+                  onClick={() => {
+                    setEventFilter('all');
+                    setTableMode('events');
+                  }}
+                >
                   {t('dashboard.resetFilter')}
-
                 </button>
-
               )}
-
             </h3>
 
-            <EventsTable
-              events={eventFilter === 'all' ? monthEvents : filteredEvents}
-              filter={eventFilter}
-              accountFilter={accountId}
-              isStockDepot={isStockDepot}
-              onGroupClick={openBuyGroup}
-            />
+            {showBalanceBreakdown ? (
+              <AccountBalanceBreakdownTable rows={breakdownRows} accounts={accounts} amountLabel={breakdownAmountLabel} />
+            ) : (
+              <EventsTable
+                events={eventFilter === 'all' ? monthEvents : filteredEvents}
+                filter={eventFilter}
+                accountFilter={accountId}
+                isStockDepot={isStockDepot}
+                onGroupClick={openBuyGroup}
+              />
+            )}
 
           </>
 

@@ -169,7 +169,7 @@ export const en: TranslationDict = {
     },
     accounts: {
       title: 'Account maintenance',
-      desc: 'Create accounts, set the main account and manage liquidity. Bank import is below.',
+      desc: 'Create accounts and manage liquidity. Set the main account when editing a checking account. Bank import is below.',
     },
     data: {
       title: 'Manage data',
@@ -274,9 +274,14 @@ export const en: TranslationDict = {
     assignSimilarFixedCostsHint: 'Same account, IBAN and matching name word',
     undoTransfer: 'Undo transfer',
     filterType: 'Filter by type',
+    filterIncome: 'Income',
+    filterExpense: 'Expenses',
+    filterTransferAdjustment: 'Transfer & adjustment',
+    showForecasts: 'Forecasts',
+    periodFilter: 'Period',
+    periodAll: 'All',
+    periodCurrent: 'Current',
     filterAll: 'All types',
-    filterCurrentMonth: 'Current month',
-    monthPick: 'Month',
     linkIncomeForecast: 'Income forecast',
     linkIncomeForecastHint: 'Links this entry to a forecast occurrence. The forecast disappears from open bookings based on its cadence.',
     linkIncomeForecastNone: 'No link',
@@ -380,6 +385,9 @@ export const en: TranslationDict = {
     notLiquid: 'non-liquid',
     mainAccount: 'Main account',
     mainAccountSuffix: ' (main)',
+    mainAccountEditHint: 'Only one main account allowed. Changing it requires confirmation.',
+    mainAccountChangeConfirm:
+      'Change main account? Current: “{{oldName}}” → New: “{{newName}}”.',
     toggleLiquid: 'Toggle liquid',
     defaultTransferTitle: 'Transfer',
     accountKind: 'Account type',
@@ -421,6 +429,9 @@ export const en: TranslationDict = {
     modeMonth: 'Month',
     accountLabel: 'Account',
     events: 'Events',
+    kontostandBreakdown: 'Balance (by account)',
+    startBalanceBreakdown: 'Opening balance (by account)',
+    endBalanceBreakdown: 'Closing balance (by account)',
     eventsOnDay: 'Events on {{date}}',
     noEvents: 'No events.',
     runningSubtotal: 'Running total',
@@ -458,41 +469,42 @@ export const en: TranslationDict = {
     },
     info: {
       kontostand:
-        'Actual balance as of the reference date (today or month end): booked movements, adjustments and actual income only — no forecast income. Shown for past and present only.',
+        'Actual balance as of the reference date (today or period end): booked movements, adjustments and actual income only — no forecast income. Shown for past and present only. Tap when viewing all accounts for a per-account breakdown.',
       kontostandDelta:
-        'Change in balance vs previous month or day (portfolio: market value today vs prior cost basis).',
+        'Change in balance vs the previous period or day (portfolio: market value today vs prior cost basis).',
       startBalance:
-        'Forecast opening balance (actual + open forecasts, excluding shopping list — those count as expenses). Adjustments via ledger. First month: backend forecast, then prior month closing balance.',
+        'Forecast total opening balance (checking/savings + stock portfolio at the reference date). First period: setup values, then prior period closing balance.',
       startLiquid:
-        'Liquid funds at month start (actual balance on liquid accounts). First month: computed opening value, then prior month closing liquid.',
+        'Liquid funds at period start (actual balance on liquid accounts). First period: computed opening value, then prior period closing liquid.',
       income:
         'Income in the selected period (booked + open forecasts). Income on the last business day counts in the following month. Click to filter the event list.',
       incomeDeltaPrev: 'Change in income vs the previous period.',
       expenses:
-        'Expenses in the selected period (booked + forecasts) — excluding transfers, adjustments and pure portfolio purchases. Click to filter the event list.',
+        'Expenses in the selected period (booked + forecasts + stock purchases) — excluding transfers and adjustments. Matches the running subtotal in the expense filter. Click to filter the event list.',
       expensesDeltaPrev: 'Change in expenses vs the previous period.',
-      net: 'Income minus expenses in the selected month.',
-      fixedCosts: 'Recurring fixed costs in the month. Click to filter the event list.',
+      net: 'Income minus expenses in the selected period.',
+      fixedCosts: 'Recurring fixed costs in the period. Click to filter the event list.',
       fixedCostsDeltaPrev: 'Change in fixed costs vs the previous period.',
       remainingFixedCosts:
-        'Open fixed costs in the month: scheduled charges minus expenses already linked (actual booking amount).',
-      variableCosts: 'Variable monthly costs (forecast or actual). Click to filter the event list.',
+        'Open fixed costs in the period: scheduled charges minus expenses already linked (actual booking amount).',
+      variableCosts: 'Variable costs in the period (forecast or actual). Click to filter the event list.',
       variableCostsDeltaPrev: 'Change in variable costs vs the previous period.',
       remainingVariableCosts:
         'Remaining budget in variable cost pots: forecast minus categorized expenses.',
-      buys: 'Applied and planned purchases in the month.',
+      buys: 'Applied and planned purchases in the period.',
       buysDeltaPrev: 'Change in buys vs the previous period.',
       debtOwed:
         'Open receivables — amounts others owe you. Only in the all-accounts overview; not included in account balances.',
       debtIOwe:
         'Open payables — amounts you owe others. Only in the all-accounts overview; not included in account balances.',
       endBalance:
-        'Forecast closing balance = opening + income − expenses. Also the next month opening balance.',
-      deltaBalance: 'Change from opening to closing balance (= income − expenses).',
+        'Forecast total closing = opening + income − expenses ± stock portfolio price change. For “All accounts”, current portfolio market value applies.',
+      deltaBalance:
+        'Change from opening to closing balance (income − expenses ± stock portfolio price change).',
       endLiquid:
-        'Liquid funds at month end (forecast) = opening liquid + income − expenses + transfers on liquid accounts.',
+        'Liquid funds at period end (forecast) = opening liquid + income − expenses + transfers on liquid accounts.',
       deltaLiquid:
-        'Change in liquid funds (income − expenses ± transfers between liquid and non-liquid accounts).',
+        'Change in liquid funds in the period (income − expenses ± transfers between liquid and non-liquid accounts).',
       dayIncome: 'Positive bookings on this day (excluding transfers and adjustments).',
       dayExpenses: 'Expenses on this day (excluding transfers and adjustments).',
     },
@@ -606,6 +618,19 @@ export const en: TranslationDict = {
     themeHint: 'Choose light or dark mode. You can change it later in settings.',
     themeLight: 'Light',
     themeDark: 'Dark',
+    newUserTitle: 'Are you new here?',
+    newUserHint: 'Choose whether to set up FinanzBuddy for the first time or restore a previously exported backup.',
+    newUserYesTitle: 'Yes, set up fresh',
+    newUserYesDesc: 'Create accounts, period and data manually or via bank export.',
+    newUserNoTitle: 'No, import backup',
+    newUserNoDesc: 'Import an extracted JSON file from Settings → Data management.',
+    jsonImportTitle: 'Import backup',
+    jsonImportHint:
+      'Select the exported JSON file. All existing data will be replaced. FinanzBuddy will then start with your backup.',
+    pickJsonFile: 'Choose JSON file',
+    jsonImportFileFilter: 'FinanzBuddy backup',
+    errorNewUserChoice: 'Please choose whether to set up fresh or import a backup.',
+    errorJsonImportFile: 'Please select a JSON backup file.',
     modeTitle: 'How do you want to start?',
     modeHint: 'Manual: enter balances yourself. Bank import (beta): load a CSV export.',
     manualTitle: 'Manual',

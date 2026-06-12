@@ -38,8 +38,9 @@ function formatTooltipDate(ts: number, intraday: boolean): string {
 }
 
 function ChartTooltip(props: {
-  clientX: number;
-  clientY: number;
+  x: number;
+  y: number;
+  containerWidth: number;
   dateLabel: string;
   price: number;
   deltaEur: number;
@@ -50,24 +51,21 @@ function ChartTooltip(props: {
   const { colors } = useUi();
   const width = 168;
   const offset = 14;
-  const left =
-    props.clientX + offset + width > window.innerWidth - 8
-      ? props.clientX - width - offset
-      : props.clientX + offset;
+  const left = props.x + offset + width > props.containerWidth - 8 ? props.x - width - offset : props.x + offset;
 
   return (
     <div
       style={{
-        position: 'fixed',
+        position: 'absolute',
         left,
-        top: props.clientY - 12,
+        top: props.y - 12,
         zIndex: 50,
         pointerEvents: 'none',
         padding: '8px 10px',
         borderRadius: 8,
         border: `1px solid ${colors.border}`,
         background: colors.bgCard,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+        boxShadow: colors.shadowGlass,
         fontSize: 12,
         lineHeight: 1.45,
         color: colors.text,
@@ -137,7 +135,7 @@ export function StockPriceChart(props: StockPriceChartProps) {
   const { colors } = useUi();
   const height = props.height ?? 220;
   const containerRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<{ index: number; clientX: number; clientY: number } | null>(null);
+  const [hover, setHover] = useState<{ index: number; x: number; y: number; containerWidth: number } | null>(null);
 
   const layout = useMemo(() => {
     const padL = 56;
@@ -203,12 +201,14 @@ export function StockPriceChart(props: StockPriceChartProps) {
   }
 
   function onMouseMove(e: React.MouseEvent) {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
     const index = pickIndex(e.clientX);
     if (index == null) {
       setHover(null);
       return;
     }
-    setHover({ index, clientX: e.clientX, clientY: e.clientY });
+    setHover({ index, x: e.clientX - rect.left, y: e.clientY - rect.top, containerWidth: rect.width });
   }
 
   const active = hover != null ? coords[hover.index] : null;
@@ -286,8 +286,9 @@ export function StockPriceChart(props: StockPriceChartProps) {
 
       {hover && active && (
         <ChartTooltip
-          clientX={hover.clientX}
-          clientY={hover.clientY}
+          x={hover.x}
+          y={hover.y}
+          containerWidth={hover.containerWidth}
           dateLabel={formatTooltipDate(active.timestamp, intraday)}
           price={active.close}
           deltaEur={activeDelta}

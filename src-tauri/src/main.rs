@@ -5,6 +5,7 @@ mod buy_group_assignment;
 mod calc_log;
 mod commands;
 mod cost_assignment;
+mod dashboard_accounts;
 mod dashboard_cache;
 mod dashboard_compute;
 mod dashboard_flow;

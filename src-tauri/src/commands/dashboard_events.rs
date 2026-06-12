@@ -398,8 +398,6 @@ pub(crate) fn build_dashboard_month_events(
   month: &str,
   account_id: &Option<String>,
   period: &DashboardPeriod,
-  cal_range_start: &str,
-  cal_range_end: &str,
 ) -> AppResult<DashboardEventBuild> {
   let event_start = period.period_start.clone();
   let event_end = period.period_end.clone();
@@ -743,8 +741,8 @@ pub(crate) fn build_dashboard_month_events(
     push_all_depot_stock_purchase_events(
       conn,
       &names,
-      cal_range_start,
-      cal_range_end,
+      &event_start,
+      &event_end,
       &mut out.events,
     )?;
   } else if let Some(ref fid) = account_id {
@@ -753,8 +751,8 @@ pub(crate) fn build_dashboard_month_events(
         conn,
         &names,
         fid,
-        cal_range_start,
-        cal_range_end,
+        &event_start,
+        &event_end,
         &mut out.events,
         true,
         &mut out.buys_sum,

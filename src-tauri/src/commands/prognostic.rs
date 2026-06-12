@@ -218,6 +218,43 @@ pub(crate) fn ledger_account_kontostand_until(
   Ok(raw - prognostic)
 }
 
+/// Summe aller Nicht-Depot-Konten (Giro, Spartöpfe, …) zum Stichtag.
+pub(crate) fn ledger_non_depot_kontostand_until(
+  conn: &rusqlite::Connection,
+  date_inclusive: &str,
+) -> AppResult<i64> {
+  let mut stmt = conn.prepare(
+    "SELECT id FROM accounts WHERE COALESCE(balance_source, 'ledger') != 'stock_portfolio'",
+  )?;
+  let ids = stmt
+    .query_map([], |r| r.get::<_, String>(0))?
+    .collect::<Result<Vec<_>, _>>()?;
+  let mut total = 0i64;
+  for id in ids {
+    if !crate::accounts::account_included_in_total_kontostand(conn, &id)? {
+      continue;
+    }
+    total += ledger_account_kontostand_until(conn, date_inclusive, &id)?;
+  }
+  Ok(total)
+}
+
+/// Kostenbasis aller Depots bis einschließlich Stichtag.
+pub(crate) fn all_depots_cost_basis_cents_until(
+  conn: &rusqlite::Connection,
+  date_inclusive: &str,
+) -> AppResult<i64> {
+  let mut stmt = conn.prepare("SELECT id FROM accounts WHERE balance_source = 'stock_portfolio'")?;
+  let depot_ids = stmt
+    .query_map([], |r| r.get::<_, String>(0))?
+    .collect::<Result<Vec<_>, _>>()?;
+  let mut total = 0i64;
+  for depot_id in depot_ids {
+    total += crate::stocks::depot_cost_basis_cents_until(conn, &depot_id, date_inclusive)?;
+  }
+  Ok(total)
+}
+
 pub(crate) fn account_kontostand_cents(
   conn: &rusqlite::Connection,
   date_inclusive: &str,
@@ -231,7 +268,40 @@ pub(crate) fn account_kontostand_cents(
     }
     return Ok(stock_market_cents.unwrap_or_else(|| 0));
   }
+  let kind: String = conn.query_row(
+    "SELECT COALESCE(account_kind, 'standard') FROM accounts WHERE id = ?1",
+    params![account_id],
+    |r| r.get(0),
+  )?;
+  if kind == "oberspartopf" {
+    let scope = crate::accounts::resolve_account_filter_scope(conn, account_id)?;
+    let mut total = 0i64;
+    for member_id in &scope.member_ids {
+      total += ledger_account_kontostand_until(conn, date_inclusive, member_id)?;
+    }
+    return Ok(total);
+  }
   ledger_account_kontostand_until(conn, date_inclusive, account_id)
+}
+
+/// Depot-Gesamtwert zum Stichtag: Marktwert (Cache) oder Kostenbasis-Fallback.
+pub(crate) fn stock_portfolio_kontostand_cents(
+  conn: &rusqlite::Connection,
+  date_inclusive: &str,
+  stock_market_cents: Option<i64>,
+) -> AppResult<i64> {
+  let depot_count: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM accounts WHERE balance_source = 'stock_portfolio'",
+    [],
+    |r| r.get(0),
+  )?;
+  if depot_count == 0 {
+    return Ok(0);
+  }
+  if let Some(cached) = stock_market_cents {
+    return Ok(cached);
+  }
+  all_depots_cost_basis_cents_until(conn, date_inclusive)
 }
 
 pub(crate) fn ledger_kontostand_total_until(
@@ -239,19 +309,9 @@ pub(crate) fn ledger_kontostand_total_until(
   date_inclusive: &str,
   stock_portfolio_cents: Option<i64>,
 ) -> AppResult<i64> {
-  let mut stmt = conn.prepare("SELECT id FROM accounts")?;
-  let ids = stmt
-    .query_map([], |r| r.get::<_, String>(0))?
-    .collect::<Result<Vec<_>, _>>()?;
-  let mut total = 0i64;
-  for id in ids {
-    if account_balance_source(conn, &id)? == "stock_portfolio" {
-      total += stock_portfolio_cents.unwrap_or(0);
-    } else {
-      total += ledger_account_kontostand_until(conn, date_inclusive, &id)?;
-    }
-  }
-  Ok(total)
+  let ledger = ledger_non_depot_kontostand_until(conn, date_inclusive)?;
+  let stock = stock_portfolio_kontostand_cents(conn, date_inclusive, stock_portfolio_cents)?;
+  Ok(ledger + stock)
 }
 
 pub(crate) fn kontostand_total_cents(

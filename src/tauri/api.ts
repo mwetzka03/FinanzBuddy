@@ -595,8 +595,11 @@ export async function updateStockHolding(input: {
   await invoke('update_stock_holding', { input });
 }
 
-export async function getStockPositionDetail(id: string): Promise<StockPositionDetail> {
-  return await invoke('get_stock_position_detail', { id });
+export async function getStockPositionDetail(
+  id: string,
+  options?: { skipQuotes?: boolean },
+): Promise<StockPositionDetail> {
+  return await invoke('get_stock_position_detail', { id, skipQuotes: options?.skipQuotes ?? null });
 }
 
 export async function getStockChart(symbol: string, range: StockChartRange): Promise<StockChart> {

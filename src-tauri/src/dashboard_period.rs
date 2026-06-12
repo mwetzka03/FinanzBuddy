@@ -556,7 +556,10 @@ pub fn balance_scope_account_ids(
   let ids = stmt
     .query_map([], |r| r.get::<_, String>(0))?
     .collect::<Result<Vec<_>, _>>()?;
-  Ok(ids)
+  Ok(ids
+    .into_iter()
+    .filter(|id| crate::accounts::account_included_in_total_kontostand(conn, id).unwrap_or(true))
+    .collect())
 }
 
 pub fn prognostic_start_balance_date(

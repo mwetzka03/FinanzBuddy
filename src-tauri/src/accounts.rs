@@ -385,6 +385,27 @@ pub fn match_spartopf_account_id(
   Ok(best.map(|(_, id)| id))
 }
 
+/// Oberspartöpfe mit Unterspartöpfen sind Gruppierungen — der Saldo liegt in den Kindern.
+pub fn account_included_in_total_kontostand(
+  conn: &rusqlite::Connection,
+  account_id: &str,
+) -> AppResult<bool> {
+  let kind: String = conn.query_row(
+    "SELECT COALESCE(account_kind, 'standard') FROM accounts WHERE id = ?1",
+    params![account_id],
+    |r| r.get(0),
+  )?;
+  if kind != "oberspartopf" {
+    return Ok(true);
+  }
+  let child_count: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM accounts WHERE parent_account_id = ?1",
+    params![account_id],
+    |r| r.get(0),
+  )?;
+  Ok(child_count == 0)
+}
+
 pub fn resolve_transfer_target_account(
   conn: &rusqlite::Connection,
   counterparty_account_id: &str,

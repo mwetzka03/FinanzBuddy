@@ -134,7 +134,20 @@ pub fn aggregate_real_period_flows(
   totals
 }
 
-/// Einnahmen/Ausgaben-Kacheln bei „Alle Konten“ — alle realen Flows (wie Zwischensumme), ohne Umbuchungen/Prognosen.
+/// Aktienkäufe im Zeitraum (negative Beträge als Ausgaben).
+pub fn stock_purchase_expense_cents(
+  events: &[TimelineEvent],
+  range_start: &str,
+  range_end: &str,
+) -> i64 {
+  events
+    .iter()
+    .filter(|ev| ev.r#type == "stock_purchase" && event_in_range(&ev.date, range_start, range_end))
+    .map(|ev| ev.amount_cents.abs())
+    .sum()
+}
+
+/// Einnahmen/Ausgaben-Kacheln bei „Alle Konten“ — reale Flows ohne Umbuchungen/Prognosen (nur Einnahmen-Kachel).
 pub fn aggregate_all_accounts_card_flows(
   events: &[TimelineEvent],
   range_start: &str,

@@ -392,17 +392,25 @@ body {
 }
 
 .fh-amount-table-target > .fh-table-head + .fh-table-row,
+.fh-amount-table-target > .fh-table-head + .fh-table-entry,
 .fh-amount-table-target > .fh-table-head + .fh-empty-row {
   margin-top: 10px;
 }
 
 .fh-amount-table-target > .fh-table-row,
+.fh-amount-table-target > .fh-table-entry,
 .fh-amount-table-target > .fh-empty-row {
   background: var(--fh-bg-card, #ffffff);
 }
 
-.fh-amount-table-target > .fh-table-row:last-child {
+.fh-amount-table-target > .fh-table-entry .fh-table-row {
+  background: transparent;
+}
+
+.fh-amount-table-target > .fh-table-row:last-child,
+.fh-amount-table-target > .fh-table-entry:last-child {
   border-radius: 0 0 18px 18px;
+  overflow: hidden;
 }
 
 .fh-amount-table-target > .fh-empty-row:last-child {
@@ -682,7 +690,77 @@ body {
 
 .fh-news-card:hover {
   border-color: var(--fh-accent, #7c3aed) !important;
-  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.12);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--fh-accent, #7c3aed) 18%, transparent);
+}
+
+.fh-news-card {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 280px;
+  min-width: 280px;
+  max-width: 360px;
+  min-height: 220px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--fh-glass-border, rgba(255, 255, 255, 0.55));
+  background: var(--fh-bg-card, #ffffff);
+  text-align: left;
+  cursor: pointer;
+  color: var(--fh-text, #1d1d1f);
+  scroll-snap-align: start;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+[data-theme='dark'] .fh-news-card {
+  background: color-mix(in srgb, var(--fh-bg-card, #2c2c2e) 92%, var(--fh-accent, #0a84ff) 8%);
+  border-color: color-mix(in srgb, var(--fh-glass-border, rgba(255, 255, 255, 0.12)) 80%, transparent);
+}
+
+.fh-news-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fh-news-card__badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fh-text-muted, #64748b);
+}
+
+.fh-news-card__badge--depot {
+  color: var(--fh-accent-dark, var(--fh-accent, #7c3aed));
+}
+
+.fh-news-card__date {
+  font-size: 11px;
+  color: var(--fh-text-muted, #64748b);
+}
+
+.fh-news-card__title {
+  margin: 12px 0 8px;
+  font-size: 16px;
+  line-height: 1.35;
+  color: var(--fh-accent-dark, var(--fh-text, #1d1d1f));
+  flex: 1;
+}
+
+.fh-news-card__summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fh-text-muted, #64748b);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fh-chart-range {
+  flex-shrink: 0;
 }
 
 .fh-amount-table-target {
@@ -702,7 +780,7 @@ body {
   box-sizing: border-box;
   background: var(--fh-amount-bg, rgba(124, 58, 237, 0.06));
   border: 1px solid var(--fh-amount-border, rgba(124, 58, 237, 0.22));
-  border-radius: 6px;
+  border-radius: 0;
   pointer-events: none;
   z-index: 1;
 }
@@ -858,7 +936,7 @@ label {
 
 .fh-settings-header-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 0.68fr;
+  grid-template-columns: repeat(20, minmax(0, 1fr));
   grid-template-rows: auto auto;
   gap: clamp(1rem, 2.5vw, 1.25rem);
   margin-bottom: 1.25rem;
@@ -866,39 +944,39 @@ label {
 }
 
 .fh-settings-grid-lang {
-  grid-column: 1;
+  grid-column: 1 / span 5;
   grid-row: 1;
 }
 
 .fh-settings-grid-appearance {
-  grid-column: 2;
+  grid-column: 6 / span 5;
   grid-row: 1;
 }
 
 .fh-settings-grid-nav {
-  grid-column: 3;
+  grid-column: 11 / span 5;
   grid-row: 1;
 }
 
 .fh-settings-grid-dev {
-  grid-column: 4;
+  grid-column: 16 / span 5;
   grid-row: 1;
 }
 
 .fh-settings-grid-data {
-  grid-column: 1 / span 2;
+  grid-column: 11 / span 6;
   grid-row: 2;
   min-width: 0;
 }
 
 .fh-settings-grid-bank {
-  grid-column: 3 / span 2;
+  grid-column: 1 / span 10;
   grid-row: 2;
   min-width: 0;
 }
 
 .fh-settings-grid-about {
-  grid-column: 5;
+  grid-column: 17 / span 4;
   grid-row: 2;
   min-width: 0;
 }
@@ -937,6 +1015,14 @@ label {
   font-weight: 600;
   color: var(--fh-text-muted, #64748b);
   line-height: 1.45;
+}
+
+.fh-settings-accounts-desc {
+  margin-bottom: 1.25rem;
+}
+
+.fh-settings-accounts-table {
+  margin-top: 0.25rem;
 }
 
 @media (max-width: 960px) {

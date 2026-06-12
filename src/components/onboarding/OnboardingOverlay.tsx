@@ -15,6 +15,7 @@ import {
   completeSetup,
   createIncomeForecast,
   importBankExport,
+  importUserData,
   listAccounts,
   listIncomeForecasts,
   previewBankExport,
@@ -45,6 +46,8 @@ type SetupMode = 'manual' | 'bank_import';
 type Step =
   | 'language'
   | 'theme'
+  | 'new-user'
+  | 'json-import'
   | 'period'
   | 'mode'
   | 'accounts'
@@ -67,6 +70,9 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
   const { mode: themeMode, setMode } = useTheme();
   const [step, setStep] = useState<Step>('language');
   const [languageChoice, setLanguageChoice] = useState<Locale>('en');
+  const [isNewUser, setIsNewUser] = useState<boolean | null>(null);
+  const [jsonImportPath, setJsonImportPath] = useState<string | null>(null);
+  const [jsonImportLabel, setJsonImportLabel] = useState<string | null>(null);
   const [setupMode, setSetupMode] = useState<SetupMode | null>(null);
   const [periodMode, setPeriodMode] = useState<DashboardPeriodMode>('since_last_salary');
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -183,7 +189,10 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
   }, [periodMode, openingBalanceDate]);
 
   const stepOrder = useMemo((): Step[] => {
-    const prefix: Step[] = ['language', 'theme', 'period', 'mode', 'accounts'];
+    const start: Step[] = ['language', 'theme', 'new-user'];
+    if (isNewUser === false) return [...start, 'json-import'];
+    if (isNewUser !== true) return start;
+    const prefix: Step[] = [...start, 'period', 'mode', 'accounts'];
     if (setupMode === 'bank_import') {
       const steps: Step[] = [...prefix, 'bank-files'];
       if (periodMode === 'since_last_salary') {
@@ -200,7 +209,7 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
     }
     steps.push('review');
     return steps;
-  }, [setupMode, periodMode]);
+  }, [isNewUser, setupMode, periodMode]);
 
   const stepIndex = stepOrder.indexOf(step);
   const onLanguageStep = step === 'language';
@@ -264,6 +273,17 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
       await setMainAccount(mainAccount.id);
     }
     await refreshAccounts();
+  }
+
+  async function pickJsonImportFile() {
+    setError(null);
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: t('onboarding.jsonImportFileFilter'), extensions: ['json'] }],
+    });
+    if (!selected || Array.isArray(selected)) return;
+    setJsonImportPath(selected);
+    setJsonImportLabel(selected.split(/[/\\]/).pop() ?? selected);
   }
 
   async function pickImportForAccount(accountId: string) {
@@ -445,6 +465,34 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
     }
     if (step === 'theme') {
       goNext();
+      return;
+    }
+    if (step === 'new-user') {
+      if (isNewUser === null) {
+        setError(t('onboarding.errorNewUserChoice'));
+        return;
+      }
+      if (isNewUser === false) {
+        setStep('json-import');
+        return;
+      }
+      goNext();
+      return;
+    }
+    if (step === 'json-import') {
+      if (!jsonImportPath) {
+        setError(t('onboarding.errorJsonImportFile'));
+        return;
+      }
+      setBusy(true);
+      try {
+        await importUserData(jsonImportPath);
+        window.location.reload();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     if (step === 'mode') {
@@ -635,6 +683,44 @@ export function OnboardingOverlay({ onComplete }: { onComplete: () => void }) {
                 onClick={() => setMode('dark')}
               >
                 {t('onboarding.themeDark')}
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {step === 'new-user' ? (
+          <section className="fh-onboarding-step">
+            <h2>{t('onboarding.newUserTitle')}</h2>
+            <p className="fh-onboarding-hint">{t('onboarding.newUserHint')}</p>
+            <div className="fh-onboarding-cards">
+              <button
+                type="button"
+                className={`fh-onboarding-card${isNewUser === true ? ' selected' : ''}`}
+                onClick={() => setIsNewUser(true)}
+              >
+                <strong>{t('onboarding.newUserYesTitle')}</strong>
+                <span>{t('onboarding.newUserYesDesc')}</span>
+              </button>
+              <button
+                type="button"
+                className={`fh-onboarding-card${isNewUser === false ? ' selected' : ''}`}
+                onClick={() => setIsNewUser(false)}
+              >
+                <strong>{t('onboarding.newUserNoTitle')}</strong>
+                <span>{t('onboarding.newUserNoDesc')}</span>
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {step === 'json-import' ? (
+          <section className="fh-onboarding-step">
+            <h2>{t('onboarding.jsonImportTitle')}</h2>
+            <p className="fh-onboarding-hint">{t('onboarding.jsonImportHint')}</p>
+            <div className="fh-onboarding-row">
+              <div>{jsonImportLabel ?? t('onboarding.noFile')}</div>
+              <button type="button" className="fh-btn ghost" onClick={() => void pickJsonImportFile()} disabled={busy}>
+                {t('onboarding.pickJsonFile')}
               </button>
             </div>
           </section>

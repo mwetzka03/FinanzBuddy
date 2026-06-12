@@ -167,7 +167,7 @@ export const de = {
     },
     accounts: {
       title: 'Kontopflege',
-      desc: 'Konten anlegen, Hauptkonto wählen und Liquidität verwalten. Bankimport findest du unten.',
+      desc: 'Konten anlegen und Liquidität verwalten. Das Hauptkonto legst du beim Bearbeiten eines Girokontos fest. Bankimport findest du unten.',
     },
     data: {
       title: 'Daten verwalten',
@@ -272,9 +272,14 @@ export const de = {
     assignSimilarFixedCostsHint: 'Gleiches Konto, IBAN und passendes Namenswort',
     undoTransfer: 'Transfer rückgängig',
     filterType: 'Typ filtern',
+    filterIncome: 'Einnahmen',
+    filterExpense: 'Ausgaben',
+    filterTransferAdjustment: 'Transfer & Korrektur',
+    showForecasts: 'Prognosen',
+    periodFilter: 'Zeitraum',
+    periodAll: 'Alle',
+    periodCurrent: 'Aktueller',
     filterAll: 'Alle Typen',
-    filterCurrentMonth: 'Aktueller Monat',
-    monthPick: 'Monat',
     linkIncomeForecast: 'Einnahmeprognose',
     linkIncomeForecastHint: 'Ordnet diese Buchung einem Prognose-Termin zu. Die Prognose verschwindet je nach Rhythmus aus den offenen Buchungen.',
     linkIncomeForecastNone: 'Keine Zuordnung',
@@ -378,6 +383,9 @@ export const de = {
     notLiquid: 'nicht-liquid',
     mainAccount: 'Hauptkonto',
     mainAccountSuffix: ' (Hauptkonto)',
+    mainAccountEditHint: 'Nur ein Hauptkonto möglich. Beim Wechsel erscheint eine Bestätigung.',
+    mainAccountChangeConfirm:
+      'Hauptkonto wirklich ändern? Bisheriges Hauptkonto: „{{oldName}}“ → Neues Hauptkonto: „{{newName}}“.',
     toggleLiquid: 'Liquid umschalten',
     defaultTransferTitle: 'Transfer',
     accountKind: 'Kontotyp',
@@ -419,6 +427,9 @@ export const de = {
     modeMonth: 'Monat',
     accountLabel: 'Konto',
     events: 'Ereignisse',
+    kontostandBreakdown: 'Kontostand (Einzelkonten)',
+    startBalanceBreakdown: 'Startsaldo (Einzelkonten)',
+    endBalanceBreakdown: 'Endsaldo (Einzelkonten)',
     eventsOnDay: 'Ereignisse am {{date}}',
     noEvents: 'Keine Ereignisse.',
     runningSubtotal: 'Zwischensumme',
@@ -456,41 +467,42 @@ export const de = {
     },
     info: {
       kontostand:
-        'Ist-Saldo zum Stichtag (heute oder Monatsende): nur gebuchte Bewegungen, Korrekturen und Ist-Einnahmen — ohne Prognose-Einnahmen. Nur für Vergangenheit und Gegenwart sichtbar.',
+        'Ist-Saldo zum Stichtag (heute oder Periodenende): nur gebuchte Bewegungen, Korrekturen und Ist-Einnahmen — ohne Prognose-Einnahmen. Nur für Vergangenheit und Gegenwart sichtbar. Bei „Alle Konten“ antippen für Einzelkonten.',
       kontostandDelta:
-        'Veränderung des Kontostands gegenüber Vormonat bzw. Vortag (Depot: Marktwert heute vs. investierte Kostenbasis zuvor).',
+        'Veränderung des Kontostands gegenüber dem vorherigen Zeitraum bzw. Vortag (Depot: Marktwert heute vs. investierte Kostenbasis zuvor).',
       startBalance:
-        'Prognostizierter Saldo zu Monatsbeginn (Ist + offene Forecasts, ohne Einkaufszettel — die zählen in Ausgaben). Korrekturen fließen über den Ledger ein. Erster Monat: Backend-Prognose, danach: Endsaldo Vormonat.',
+        'Prognostizierter Gesamtsaldo zu Periodenbeginn (Giro/Spartöpfe + Aktien-Depot zum Stichtag). Erster Zeitraum: Einrichtungswerte, danach: Endsaldo des vorherigen Zeitraums.',
       startLiquid:
-        'Liquide Mittel zu Monatsbeginn (Ist-Saldo auf liquiden Konten). Erster Monat: berechneter Startwert, danach: Ende liquide Vormonat.',
+        'Liquide Mittel zu Periodenbeginn (Ist-Saldo auf liquiden Konten). Erster Zeitraum: berechneter Startwert, danach: Ende liquide des vorherigen Zeitraums.',
       income:
         'Einnahmen im gewählten Zeitraum (gebucht + offene Prognosen). Einnahmen am letzten Bankarbeitstag zählen erst im Folgemonat. Klick filtert die Ereignisliste.',
       incomeDeltaPrev: 'Veränderung der Einnahmen gegenüber dem vorherigen Zeitraum.',
       expenses:
-        'Ausgaben im gewählten Zeitraum (gebucht + Prognosen) — ohne Transfers, Korrekturen und reine Depot-Käufe. Klick filtert die Ereignisliste.',
+        'Ausgaben im gewählten Zeitraum (gebucht + Prognosen + Aktienkäufe) — ohne Transfers und Korrekturen. Entspricht der Zwischensumme im Ausgaben-Filter. Klick filtert die Ereignisliste.',
       expensesDeltaPrev: 'Veränderung der Ausgaben gegenüber dem vorherigen Zeitraum.',
-      net: 'Einnahmen minus Ausgaben im gewählten Monat.',
-      fixedCosts: 'Wiederkehrende Fixkosten im Monat. Klick filtert die Ereignisliste.',
+      net: 'Einnahmen minus Ausgaben im gewählten Zeitraum.',
+      fixedCosts: 'Wiederkehrende Fixkosten im Zeitraum. Klick filtert die Ereignisliste.',
       fixedCostsDeltaPrev: 'Veränderung der Fixkosten gegenüber dem vorherigen Zeitraum.',
       remainingFixedCosts:
-        'Offene Fixkosten im Monat: geplante Termine minus bereits zugeordnete Ausgaben (Ist-Betrag der Buchung).',
-      variableCosts: 'Variable Monatskosten (Prognose oder Ist). Klick filtert die Ereignisliste.',
+        'Offene Fixkosten im Zeitraum: geplante Termine minus bereits zugeordnete Ausgaben (Ist-Betrag der Buchung).',
+      variableCosts: 'Variable Kosten im Zeitraum (Prognose oder Ist). Klick filtert die Ereignisliste.',
       variableCostsDeltaPrev: 'Veränderung der variablen Kosten gegenüber dem vorherigen Zeitraum.',
       remainingVariableCosts:
         'Verbleibendes Budget in den variablen Kosten-Geldtopf: Prognose minus bereits kategorisierte Ausgaben.',
-      buys: 'Angewendete Kaufposten und geplante Käufe im Monat.',
+      buys: 'Angewendete Kaufposten und geplante Käufe im Zeitraum.',
       buysDeltaPrev: 'Veränderung der Buys gegenüber dem vorherigen Zeitraum.',
       debtOwed:
         'Offene Forderungen — Beträge, die dir andere schulden. Nur in der Gesamtübersicht (Alle Konten), fließen nicht in Kontosalden ein.',
       debtIOwe:
         'Offene Verbindlichkeiten — Beträge, die du anderen schuldest. Nur in der Gesamtübersicht (Alle Konten), fließen nicht in Kontosalden ein.',
       endBalance:
-        'Prognostizierter Endsaldo = Startsaldo + Einnahmen − Ausgaben des Monats. Gleichzeitig Startsaldo des Folgemonats.',
-      deltaBalance: 'Veränderung vom Startsaldo zum Endsaldo (= Einnahmen − Ausgaben).',
+        'Prognostizierter Gesamtsaldo = Startsaldo + Einnahmen − Ausgaben ± Kursänderung Aktien-Depot. Bei „Alle Konten“ zählt der aktuelle Depot-Marktwert.',
+      deltaBalance:
+        'Veränderung vom Startsaldo zum Endsaldo (Einnahmen − Ausgaben ± Kursänderung Aktien-Depot).',
       endLiquid:
-        'Liquide Mittel am Monatsende (Prognose) = Start liquide + Einnahmen − Ausgaben + Transfers auf liquiden Konten.',
+        'Liquide Mittel am Periodenende (Prognose) = Start liquide + Einnahmen − Ausgaben + Transfers auf liquiden Konten.',
       deltaLiquid:
-        'Veränderung der liquiden Mittel im Monat (Einnahmen − Ausgaben ± Transfers zwischen liquiden und nicht-liquiden Konten).',
+        'Veränderung der liquiden Mittel im Zeitraum (Einnahmen − Ausgaben ± Transfers zwischen liquiden und nicht-liquiden Konten).',
       dayIncome: 'Positive Buchungen an diesem Tag (ohne Transfers und Korrekturen).',
       dayExpenses: 'Ausgaben an diesem Tag (ohne Transfers und Korrekturen).',
     },
@@ -606,6 +618,20 @@ export const de = {
     themeHint: 'Wähle Hell- oder Dunkelmodus. Du kannst das später in den Einstellungen ändern.',
     themeLight: 'Hell',
     themeDark: 'Dunkel',
+    newUserTitle: 'Bist du neu hier?',
+    newUserHint:
+      'Wähle, ob du FinanzBuddy zum ersten Mal einrichtest oder ein zuvor exportiertes Backup wiederherstellen möchtest.',
+    newUserYesTitle: 'Ja, neu einrichten',
+    newUserYesDesc: 'Konten, Zeitraum und Daten manuell oder per Bankexport anlegen.',
+    newUserNoTitle: 'Nein, Backup importieren',
+    newUserNoDesc: 'Extrahierte JSON-Datei aus Einstellungen → Daten verwalten importieren.',
+    jsonImportTitle: 'Backup importieren',
+    jsonImportHint:
+      'Wähle die exportierte JSON-Datei. Alle bestehenden Daten werden ersetzt. Danach startet FinanzBuddy mit deinem Backup.',
+    pickJsonFile: 'JSON-Datei wählen',
+    jsonImportFileFilter: 'FinanzBuddy Backup',
+    errorNewUserChoice: 'Bitte wähle, ob du neu einrichtest oder ein Backup importierst.',
+    errorJsonImportFile: 'Bitte wähle eine JSON-Backup-Datei.',
     modeTitle: 'Wie möchtest du starten?',
     modeHint: 'Manuell: Kontostände selbst eingeben. Bankimport (Beta): CSV-Export der Bank laden.',
     manualTitle: 'Manuell',

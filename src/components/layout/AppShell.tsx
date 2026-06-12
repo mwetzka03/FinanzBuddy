@@ -9,36 +9,35 @@ import { BrandLogo } from './BrandLogo';
 
 function useTopBarNavHover() {
   const location = useLocation();
+  const activeParentId = useMemo(() => findActiveNavParent(location.pathname)?.id ?? null, [location.pathname]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
+  const displayedSectionId = hoveredId;
+
   const hoveredSection = useMemo(
-    () => NAV_SECTIONS.find((s) => s.id === hoveredId && s.items?.length),
-    [hoveredId],
+    () => NAV_SECTIONS.find((s) => s.id === displayedSectionId && s.items?.length),
+    [displayedSectionId],
   );
 
   useEffect(() => {
-    setHoveredId(findActiveNavParent(location.pathname)?.id ?? null);
-  }, [location.pathname]);
+    setHoveredId(activeParentId);
+  }, [activeParentId]);
 
-  const resetHover = () => setHoveredId(findActiveNavParent(location.pathname)?.id ?? null);
-
-  return { hoveredId, setHoveredId, hoveredSection, resetHover };
+  return { hoveredId, setHoveredId, hoveredSection, activeParentId };
 }
 
 function AppTopBarPrimaryNav({
   hoveredId,
   setHoveredId,
-  resetHover,
 }: {
   hoveredId: string | null;
   setHoveredId: (id: string | null) => void;
-  resetHover: () => void;
 }) {
   const { t } = useLocale();
   const location = useLocation();
 
   return (
-    <nav className="fh-topbar__nav" aria-label="Hauptnavigation" onMouseLeave={resetHover}>
+    <nav className="fh-topbar__nav" aria-label="Hauptnavigation">
       {NAV_SECTIONS.map((section) => {
         const active = isNavSectionActive(section, location.pathname);
         const SectionIcon = section.icon;
@@ -187,16 +186,23 @@ export function AppSidebar() {
 }
 
 export function AppTopBar() {
-  const { hoveredId, setHoveredId, hoveredSection, resetHover } = useTopBarNavHover();
+  const { hoveredId, setHoveredId, hoveredSection, activeParentId } = useTopBarNavHover();
 
   return (
-    <header className="fh-topbar">
+    <header
+      className="fh-topbar"
+      onMouseLeave={() => setHoveredId(activeParentId)}
+    >
       <div className="fh-topbar__main">
         <BrandLogo className="fh-topbar__brand fh-brand" />
-        <AppTopBarPrimaryNav hoveredId={hoveredId} setHoveredId={setHoveredId} resetHover={resetHover} />
+        <AppTopBarPrimaryNav hoveredId={hoveredId} setHoveredId={setHoveredId} />
         <AppNavActions className="fh-topbar__actions" />
       </div>
-      {hoveredSection ? <AppTopBarSubnav sectionId={hoveredSection.id} /> : null}
+      {hoveredSection ? (
+        <div onMouseEnter={() => setHoveredId(hoveredSection.id)}>
+          <AppTopBarSubnav sectionId={hoveredSection.id} />
+        </div>
+      ) : null}
     </header>
   );
 }

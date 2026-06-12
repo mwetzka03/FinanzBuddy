@@ -1,4 +1,5 @@
-import type { StockPortfolioSummary } from './types';
+import type { StockHoldingView, StockPortfolioSummary } from './types';
+import { mergeHoldingIntoPortfolio, removeHoldingFromPortfolio } from './stockPortfolioMerge';
 
 /** Entspricht portfolio_cache::REFRESH_INTERVAL (10 Minuten). */
 export const STOCK_PORTFOLIO_CACHE_MS = 10 * 60 * 1000;
@@ -23,4 +24,22 @@ export function writeStockPortfolioCache(filter: string, data: StockPortfolioSum
 
 export function clearStockPortfolioCache(): void {
   cache = null;
+}
+
+export function patchStockPortfolioCache(holding: StockHoldingView): void {
+  if (!cache) return;
+  cache = {
+    ...cache,
+    data: mergeHoldingIntoPortfolio(cache.data, holding),
+    fetchedAt: Date.now(),
+  };
+}
+
+export function removeFromStockPortfolioCache(holdingId: string): void {
+  if (!cache) return;
+  cache = {
+    ...cache,
+    data: removeHoldingFromPortfolio(cache.data, holdingId),
+    fetchedAt: Date.now(),
+  };
 }

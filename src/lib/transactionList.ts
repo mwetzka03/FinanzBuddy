@@ -24,6 +24,73 @@ export const ENTRY_KIND_FILTERS: EntryKindFilter[] = [
 /** Typen für die Mehrfach-Auswahl auf der Transaktionsseite (ohne „Alle“). */
 export const CHECKABLE_ENTRY_KINDS: EntryKindFilter[] = ENTRY_KIND_FILTERS.filter((k) => k !== 'all');
 
+export type TransactionTypeFilter = {
+  income: boolean;
+  expense: boolean;
+  transferAdjustment: boolean;
+  showForecasts: boolean;
+};
+
+export function defaultTransactionTypeFilter(): TransactionTypeFilter {
+  return {
+    income: true,
+    expense: true,
+    transferAdjustment: true,
+    showForecasts: true,
+  };
+}
+
+export function filterUnifiedEntriesByTypeFilter(items: UnifiedEntry[], filter: TransactionTypeFilter): UnifiedEntry[] {
+  const { income, expense, transferAdjustment, showForecasts } = filter;
+  const anyLedger = income || expense || transferAdjustment;
+  if (!anyLedger && !showForecasts) return [];
+
+  const forecastsOnly = showForecasts && !income && !expense && !transferAdjustment;
+
+  return items.filter((entry) => {
+    if (entry.source === 'income_forecast') {
+      if (!showForecasts) return false;
+      if (forecastsOnly) return true;
+      return income;
+    }
+    if (entry.source === 'expense_forecast' || entry.source === 'buy_forecast') {
+      if (!showForecasts) return false;
+      if (forecastsOnly) return true;
+      return expense;
+    }
+
+    const kind = entry.displayKind;
+    if (kind === 'income') return income;
+    if (kind === 'expense' || kind === 'fixed_cost' || kind === 'buy_apply' || kind === 'buy_planned') {
+      return expense;
+    }
+    if (kind === 'transfer' || kind === 'adjustment') return transferAdjustment;
+    return expense;
+  });
+}
+
+export function deriveTableKindFilter(filter: TransactionTypeFilter): EntryKindFilter | 'all' | 'multi' {
+  const active: EntryKindFilter[] = [];
+  if (filter.income) active.push('income');
+  if (filter.expense) active.push('expense');
+  if (filter.transferAdjustment) {
+    active.push('transfer', 'adjustment');
+  }
+  if (filter.showForecasts) {
+    active.push('income_forecast', 'expense_forecast');
+  }
+
+  if (active.length === 0) return 'multi';
+  if (active.length === 1) return active[0];
+
+  const allOn =
+    filter.income &&
+    filter.expense &&
+    filter.transferAdjustment &&
+    filter.showForecasts;
+  return allOn ? 'all' : 'multi';
+}
+
 export function defaultCheckedEntryKinds(): Set<EntryKindFilter> {
   return new Set(CHECKABLE_ENTRY_KINDS);
 }

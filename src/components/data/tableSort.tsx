@@ -35,6 +35,7 @@ type SortableThProps<K extends string> = {
   onSort: (next: SortState<K>) => void;
   style?: CSSProperties;
   align?: 'left' | 'center' | 'right';
+  amountCol?: string | number;
 };
 
 export function SortableTh<K extends string>({
@@ -44,6 +45,7 @@ export function SortableTh<K extends string>({
   onSort,
   style,
   align = 'left',
+  amountCol,
 }: SortableThProps<K>) {
   const ui = useUi();
   const active = sort?.key === sortKey;
@@ -54,6 +56,8 @@ export function SortableTh<K extends string>({
       type="button"
       className={['fh-sort-th', active ? 'fh-sort-th--active' : ''].filter(Boolean).join(' ')}
       onClick={() => onSort(toggleSort(sort, sortKey))}
+      data-amount-col={amountCol != null ? String(amountCol) : undefined}
+      data-amount-header={amountCol != null ? '' : undefined}
       style={{
         ...style,
         background: 'none',

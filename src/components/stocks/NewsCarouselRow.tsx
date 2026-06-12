@@ -112,55 +112,16 @@ export function NewsCarouselRow({ title, hint, articles, emptyText }: NewsCarous
               key={article.id}
               type="button"
               onClick={() => openArticle(article.url)}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                flex: `0 0 ${CARD_MIN_WIDTH}px`,
-                minWidth: CARD_MIN_WIDTH,
-                maxWidth: 360,
-                minHeight: 220,
-                padding: '16px 18px',
-                borderRadius: 14,
-                border: `1px solid ${ui.colors.border}`,
-                background: `linear-gradient(160deg, ${ui.colors.bgCard} 0%, ${ui.colors.accentSoft}33 100%)`,
-                textAlign: 'left',
-                cursor: 'pointer',
-                color: ui.colors.text,
-                scrollSnapAlign: 'start',
-              }}
               className="fh-news-card"
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: '0.06em',
-                    textTransform: 'uppercase',
-                    color: article.category === 'depot' ? ui.colors.accentDark : ui.colors.textMuted,
-                  }}
-                >
+              <div className="fh-news-card__meta">
+                <span className={`fh-news-card__badge${article.category === 'depot' ? ' fh-news-card__badge--depot' : ''}`}>
                   {article.symbol ?? article.source}
                 </span>
-                <span style={{ fontSize: 11, color: ui.colors.textMuted }}>{formatDisplayDateTime(article.publishedAt)}</span>
+                <span className="fh-news-card__date">{formatDisplayDateTime(article.publishedAt)}</span>
               </div>
-              <h4 style={{ margin: '12px 0 8px', fontSize: 16, lineHeight: 1.35, color: ui.colors.accentDark, flex: 1 }}>
-                {article.title}
-              </h4>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                  color: ui.colors.textMuted,
-                  display: '-webkit-box',
-                  WebkitLineClamp: 4,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                }}
-              >
-                {article.summary}
-              </p>
+              <h4 className="fh-news-card__title">{article.title}</h4>
+              <p className="fh-news-card__summary">{article.summary}</p>
             </button>
           ))}
         </div>

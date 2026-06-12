@@ -1682,28 +1682,40 @@ fn sell_stock_holding_inner(state: State<'_, AppState>, input: SellStockHoldingI
 }
 
 #[tauri::command]
-pub fn get_stock_position_detail(state: State<'_, AppState>, id: String) -> CmdResult<StockPositionDetail> {
-  to_cmd_result(get_stock_position_detail_inner(state, id))
+pub fn get_stock_position_detail(
+  state: State<'_, AppState>,
+  id: String,
+  skip_quotes: Option<bool>,
+) -> CmdResult<StockPositionDetail> {
+  to_cmd_result(get_stock_position_detail_inner(state, id, skip_quotes.unwrap_or(false)))
 }
 
-fn get_stock_position_detail_inner(state: State<'_, AppState>, id: String) -> AppResult<StockPositionDetail> {
+fn get_stock_position_detail_inner(
+  state: State<'_, AppState>,
+  id: String,
+  skip_quotes: bool,
+) -> AppResult<StockPositionDetail> {
   let conn = state.conn.lock().unwrap();
   let holding = load_holding(&conn, &id)?;
   let lots = load_lots(&conn, &id)?;
   drop(conn);
 
-  let mut fx = FxToEur::new();
-  let _ = fx.foreign_per_eur("USD");
-  let (quote, sparkline) = match fetch_lsx_eur_quote_with_rate(&holding.symbol, &mut fx) {
-    Ok((quote, sparkline)) => (
-      Some(quote),
-      if sparkline.is_empty() {
-        None
-      } else {
-        Some(sparkline)
-      },
-    ),
-    Err(_) => (None, None),
+  let (quote, sparkline) = if skip_quotes {
+    (None, None)
+  } else {
+    let mut fx = FxToEur::new();
+    let _ = fx.foreign_per_eur("USD");
+    match fetch_lsx_eur_quote_with_rate(&holding.symbol, &mut fx) {
+      Ok((quote, sparkline)) => (
+        Some(quote),
+        if sparkline.is_empty() {
+          None
+        } else {
+          Some(sparkline)
+        },
+      ),
+      Err(_) => (None, None),
+    }
   };
   let price_eur = quote.as_ref().map(|q| q.price);
   let position = build_holding_view(holding, quote, sparkline);

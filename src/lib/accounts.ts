@@ -79,6 +79,52 @@ export function isSavingsPotAccount(account: Pick<Account, 'accountKind' | 'bala
   return kind === 'spartopf' || kind === 'oberspartopf';
 }
 
+/** Dashboard-Kontoauswahl: Hauptkonto → Giro → Depots → Oberspartopf (mit Unterspartöpfen). */
+export function buildDashboardAccountTreeRows(accounts: Account[]): AccountTreeRow[] {
+  const accountIds = new Set(accounts.map((a) => a.id));
+  const mainAccountId = accounts.find((a) => a.isMain)?.id;
+  const byParent = new Map<string, Account[]>();
+  const roots: Account[] = [];
+
+  for (const account of accounts) {
+    if (account.parentAccountId && accountIds.has(account.parentAccountId)) {
+      const siblings = byParent.get(account.parentAccountId) ?? [];
+      siblings.push(account);
+      byParent.set(account.parentAccountId, siblings);
+    } else {
+      roots.push(account);
+    }
+  }
+
+  const sortByName = (a: Account, b: Account) => a.name.localeCompare(b.name, 'de');
+
+  function rootPriority(account: Account): number {
+    if (account.id === mainAccountId || account.isMain) return 0;
+    const kind = effectiveAccountKind(account);
+    if (kind === 'depot') return 2;
+    if (kind === 'oberspartopf') return 3;
+    if (kind === 'spartopf') return 4;
+    return 1;
+  }
+
+  roots.sort((a, b) => rootPriority(a) - rootPriority(b) || sortByName(a, b));
+  for (const children of byParent.values()) {
+    children.sort(sortByName);
+  }
+
+  const rows: AccountTreeRow[] = [];
+  function walk(account: Account, depth: number) {
+    rows.push({ account, depth });
+    for (const child of byParent.get(account.id) ?? []) {
+      walk(child, depth + 1);
+    }
+  }
+  for (const root of roots) {
+    walk(root, 0);
+  }
+  return rows;
+}
+
 export function buildAccountTreeRows(accounts: Account[]): AccountTreeRow[] {
   const accountIds = new Set(accounts.map((a) => a.id));
   const byParent = new Map<string, Account[]>();

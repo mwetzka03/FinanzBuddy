@@ -192,6 +192,7 @@ export function FixedCostsPage() {
               onSort={setSort}
               style={ui.thAmount}
               align="center"
+              amountCol="amount"
             />
             <SortableTh label={t('common.firstCharge')} sortKey="firstCharge" sort={sort} onSort={setSort} />
             <SortableTh label={t('common.due')} sortKey="due" sort={sort} onSort={setSort} />
@@ -210,8 +211,8 @@ export function FixedCostsPage() {
             <div style={ui.emptyRow}>{t('common.none')}</div>
           ) : (
             pagination.pageItems.map((r) => (
-              <div key={r.id}>
-                <div style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
+              <div key={r.id} className="fh-table-entry">
+                <div className="fh-table-row" style={{ ...ui.tableRow, gridTemplateColumns: TABLE_COLS }}>
                 <div style={ui.cellStack}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <EntityIconBadge icon={r.icon} color={r.color} size={20} />

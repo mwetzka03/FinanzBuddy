@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Landmark } from 'lucide-react';
 import type { Account } from '../../lib/types';
-import { accountKindLabel, buildAccountTreeRows, isMainAccountCandidate } from '../../lib/accounts';
+import { accountKindLabel, buildDashboardAccountTreeRows } from '../../lib/accounts';
 import { AddEntryButton } from '../common/AddEntryButton';
 import { AccountFormModal } from './AccountFormModal';
-import { listAccounts, setMainAccount } from '../../tauri/api';
+import { listAccounts } from '../../tauri/api';
 import { useTablePagination, TablePaginationBar } from '../data/tablePagination';
 import { useUi } from '../../lib/ui';
 import { useLocale } from '../../i18n/LocaleProvider';
@@ -20,10 +20,8 @@ export function AccountsSettingsPanel() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editAccount, setEditAccount] = useState<Account | null>(null);
 
-  const treeRows = useMemo(() => buildAccountTreeRows(rows), [rows]);
+  const treeRows = useMemo(() => buildDashboardAccountTreeRows(rows), [rows]);
   const pagination = useTablePagination(treeRows);
-  const mainAccountCandidates = useMemo(() => rows.filter(isMainAccountCandidate), [rows]);
-  const mainAccountId = useMemo(() => rows.find((a) => a.isMain)?.id ?? '', [rows]);
 
   async function refresh() {
     setRows(await listAccounts());
@@ -32,12 +30,6 @@ export function AccountsSettingsPanel() {
   useEffect(() => {
     refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
-
-  async function onSetMain(id: string) {
-    setError(null);
-    await setMainAccount(id);
-    await refresh();
-  }
 
   return (
     <article className="fh-panel fh-settings-pref fh-settings-pref-wide">
@@ -48,23 +40,11 @@ export function AccountsSettingsPanel() {
         </div>
         <AddEntryButton label={t('accounts.newAccount')} onClick={() => setCreateModalOpen(true)} />
       </header>
-      <p className="fh-panel-desc">{t('settings.accounts.desc')}</p>
+      <p className="fh-panel-desc fh-settings-accounts-desc">{t('settings.accounts.desc')}</p>
 
       {error ? <div className="fh-bank-import-result fh-bank-import-result--error">{error}</div> : null}
 
-      <label style={{ ...ui.field, maxWidth: 360, marginBottom: 16, display: 'flex' }}>
-        <span style={ui.label}>{t('accounts.mainAccount')}</span>
-        <select value={mainAccountId} onChange={(e) => onSetMain(e.target.value)} style={ui.input}>
-          {mainAccountCandidates.length === 0 ? <option value="">{t('common.noManualAccount')}</option> : null}
-          {mainAccountCandidates.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div style={ui.tableScroll}>
+      <div className="fh-settings-accounts-table">
         <div style={ui.table}>
           <div className="fh-table-head" style={{ ...ui.tableHead, gridTemplateColumns: ACCOUNT_COLS }}>
             <div>{t('common.name')}</div>

@@ -12,16 +12,16 @@ import { FixedCostHistoryModal } from '../components/transactions/FixedCostHisto
 import { formatDisplayDate, monthEndDate, monthStartDate, toIsoMonth } from '../lib/date';
 import {
   buildUnifiedEntries,
-  CHECKABLE_ENTRY_KINDS,
-  defaultCheckedEntryKinds,
+  defaultTransactionTypeFilter,
+  deriveTableKindFilter,
   dueRuleShort,
   entryAmountCentsForTable,
-  filterUnifiedEntriesByKinds,
   filterUnifiedEntriesByMonth,
+  filterUnifiedEntriesByTypeFilter,
   formatEntryAmount,
-  kindFilterLabel,
   ledgerRowTitle,
   type EntryKindFilter,
+  type TransactionTypeFilter,
   type UnifiedEntry,
 } from '../lib/transactionList';
 import {
@@ -45,7 +45,6 @@ import { stockAccentColor } from '../lib/tableAccent';
 import { useUi } from '../lib/ui';
 import { ListPanel } from '../components/layout/ListPanel';
 import { PageShell } from '../components/layout/PageShell';
-import { MonthInput } from '../components/DateInput';
 import { Checkbox } from '../components/common/Checkbox';
 import { EditIconButton } from '../components/EditIconButton';
 import { TrashIconButton } from '../components/TrashIconButton';
@@ -88,8 +87,8 @@ export function TransactionsPage() {
   const [buyItemGroups, setBuyItemGroups] = useState<BuyItemGroup[]>([]);
   const [incomeForecasts, setIncomeForecasts] = useState<IncomeForecast[]>([]);
   const [accountId, setAccountId] = useState<string>('');
-  const [kindChecks, setKindChecks] = useState<Set<EntryKindFilter>>(() => defaultCheckedEntryKinds());
-  const [monthFilter, setMonthFilter] = useState<IsoMonth | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState<TransactionTypeFilter>(() => defaultTransactionTypeFilter());
+  const [periodScope, setPeriodScope] = useState<'all' | 'current'>('all');
   const [ledgerRows, setLedgerRows] = useState<LedgerTransaction[]>([]);
   const [nextDatesByForecastId, setNextDatesByForecastId] = useState<Map<string, IsoDate[]>>(new Map());
   const [nextDatesByFixedCostId, setNextDatesByFixedCostId] = useState<Map<string, IsoDate[]>>(new Map());
@@ -160,14 +159,15 @@ export function TransactionsPage() {
     ],
   );
 
-  const singleKindFilter =
-    kindChecks.size === 1 ? ([...kindChecks][0] as EntryKindFilter) : kindChecks.size === CHECKABLE_ENTRY_KINDS.length ? 'all' : 'multi';
+  const singleKindFilter = deriveTableKindFilter(typeFilter);
   const tableCols = tableColumns(singleKindFilter);
+  const effectiveMonthFilter: IsoMonth | 'all' =
+    periodScope === 'current' ? toIsoMonth(new Date()) : 'all';
 
   const filteredRows = useMemo(() => {
-    const byKind = filterUnifiedEntriesByKinds(unifiedRows, kindChecks);
-    return filterUnifiedEntriesByMonth(byKind, monthFilter);
-  }, [unifiedRows, kindChecks, monthFilter]);
+    const byKind = filterUnifiedEntriesByTypeFilter(unifiedRows, typeFilter);
+    return filterUnifiedEntriesByMonth(byKind, effectiveMonthFilter);
+  }, [unifiedRows, typeFilter, effectiveMonthFilter]);
 
   const sortedRows = useMemo(
     () =>
@@ -183,12 +183,12 @@ export function TransactionsPage() {
 
   async function refresh() {
     const ledgerOpts =
-      monthFilter === 'all'
+      effectiveMonthFilter === 'all'
         ? { accountId: accountId || undefined }
         : {
             accountId: accountId || undefined,
-            start: monthStartDate(monthFilter),
-            end: monthEndDate(monthFilter),
+            start: monthStartDate(effectiveMonthFilter),
+            end: monthEndDate(effectiveMonthFilter),
           };
     const [ledger, forecasts, fixed, variables, buys, buyGroups] = await Promise.all([
       listLedgerTransactions(ledgerOpts),
@@ -231,10 +231,6 @@ export function TransactionsPage() {
   }
 
   useEffect(() => {
-    setKindChecks(defaultCheckedEntryKinds());
-  }, []);
-
-  useEffect(() => {
     listAccounts()
       .then((a) => {
         setAccounts(a);
@@ -247,7 +243,7 @@ export function TransactionsPage() {
 
   useEffect(() => {
     refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [accountId, monthFilter]);
+  }, [accountId, periodScope]);
 
   function openCreate() {
     setEditingRow(null);
@@ -380,44 +376,72 @@ export function TransactionsPage() {
         <div style={{ ...ui.field, width: '100%', maxWidth: 520, marginBottom: 0 }}>
           <span style={ui.label}>{t('transactions.filterType')}</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', marginTop: 6 }}>
-            {CHECKABLE_ENTRY_KINDS.map((kind) => (
-              <Checkbox
-                key={kind}
-                checked={kindChecks.has(kind)}
-                onChange={(checked) => {
-                  setKindChecks((prev) => {
-                    const next = new Set(prev);
-                    if (checked) {
-                      next.add(kind);
-                    } else if (next.size > 1) {
-                      next.delete(kind);
-                    }
-                    return next;
-                  });
-                }}
-              >
-                {kindFilterLabel(kind, t)}
-              </Checkbox>
-            ))}
+            <Checkbox
+              checked={typeFilter.income}
+              onChange={(checked) => {
+                setTypeFilter((prev) => {
+                  if (checked || prev.expense || prev.transferAdjustment || prev.showForecasts) {
+                    return { ...prev, income: checked };
+                  }
+                  return prev;
+                });
+              }}
+            >
+              {t('transactions.filterIncome')}
+            </Checkbox>
+            <Checkbox
+              checked={typeFilter.expense}
+              onChange={(checked) => {
+                setTypeFilter((prev) => {
+                  if (checked || prev.income || prev.transferAdjustment || prev.showForecasts) {
+                    return { ...prev, expense: checked };
+                  }
+                  return prev;
+                });
+              }}
+            >
+              {t('transactions.filterExpense')}
+            </Checkbox>
+            <Checkbox
+              checked={typeFilter.transferAdjustment}
+              onChange={(checked) => {
+                setTypeFilter((prev) => {
+                  if (checked || prev.income || prev.expense || prev.showForecasts) {
+                    return { ...prev, transferAdjustment: checked };
+                  }
+                  return prev;
+                });
+              }}
+            >
+              {t('transactions.filterTransferAdjustment')}
+            </Checkbox>
+            <Checkbox
+              checked={typeFilter.showForecasts}
+              onChange={(checked) => setTypeFilter((prev) => ({ ...prev, showForecasts: checked }))}
+            >
+              {t('transactions.showForecasts')}
+            </Checkbox>
           </div>
         </div>
-        <label style={{ ...ui.field, width: '100%', maxWidth: 220, marginBottom: 0 }}>
-          <span style={ui.label}>{t('common.month')}</span>
-          <select
-            value={monthFilter}
-            onChange={(e) => setMonthFilter(e.target.value === 'all' ? 'all' : (e.target.value as IsoMonth))}
-            style={ui.input}
-          >
-            <option value="all">{t('transactions.filterAll')}</option>
-            <option value={toIsoMonth(new Date())}>{t('transactions.filterCurrentMonth')}</option>
-          </select>
-        </label>
-        {monthFilter !== 'all' ? (
-          <label style={{ ...ui.field, width: '100%', maxWidth: 180, marginBottom: 0 }}>
-            <span style={ui.label}>{t('transactions.monthPick')}</span>
-            <MonthInput value={monthFilter} onChange={setMonthFilter} />
-          </label>
-        ) : null}
+        <div style={{ ...ui.field, width: '100%', maxWidth: 220, marginBottom: 0 }}>
+          <span style={ui.label}>{t('transactions.periodFilter')}</span>
+          <div className="fh-segment stretch" role="group" aria-label={t('transactions.periodFilter')} style={{ marginTop: 6 }}>
+            <button
+              type="button"
+              className={periodScope === 'all' ? 'active' : undefined}
+              onClick={() => setPeriodScope('all')}
+            >
+              {t('transactions.periodAll')}
+            </button>
+            <button
+              type="button"
+              className={periodScope === 'current' ? 'active' : undefined}
+              onClick={() => setPeriodScope('current')}
+            >
+              {t('transactions.periodCurrent')}
+            </button>
+          </div>
+        </div>
         {!isStockDepot ? (
           <div className="fh-transactions-toolbar__actions">
             <AddEntryButton label={t('transactions.newEntry')} onClick={openCreate} disabled={!effectiveAccountId} />

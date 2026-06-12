@@ -76,10 +76,6 @@ export function dashboardEventSubtotalContribution(
   accountFilter?: string | null,
   isStockDepot?: boolean,
 ): number | null {
-  if (isStockDepot && ev.type === 'stock_purchase') {
-    if (filter !== 'all' && filter !== 'expense' && filter !== 'buy') return null;
-    return Math.abs(ev.amountCents);
-  }
   const contribution = dashboardEventFlowContribution(ev, accountFilter, isStockDepot);
   if (contribution === null) return null;
   if (filter === 'fixed_cost' && ev.type === 'expense' && ev.fixedCostId != null) return null;
