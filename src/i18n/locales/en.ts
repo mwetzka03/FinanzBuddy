@@ -197,6 +197,8 @@ export const en: TranslationDict = {
       manualSetupBlocked:
         'Bank import is disabled for manual setup. Use “Reset app” to run setup again with bank import.',
       desc: 'Load a Sparkasse export file and import transactions plus opening balance into an account. Already imported entries are skipped by bank reference.',
+      followUpDesc:
+        'Add new transactions from a bank export. Already imported entries are left unchanged — no balance or back-calculation required.',
       verifyHint:
         'Bank imports can cause discrepancies (e.g. missing or duplicate transactions). After importing, check Transactions to verify all bookings are correct.',
       formatHint:
@@ -272,6 +274,12 @@ export const en: TranslationDict = {
     oneTimeIncomeHint: 'No rhythm or due date — appears as a one-time income forecast in transactions.',
     assignSimilarFixedCosts: 'Assign all similar',
     assignSimilarFixedCostsHint: 'Same account, IBAN and matching name word',
+    buyGroupSplitTitle: 'Split amount across group',
+    buyGroupSplitHint:
+      'Assign the transaction amount ({{total}}) to items in group “{{group}}”. Not every item is required — the sum must match the transaction amount.',
+    buyGroupSplitEmpty: 'No open group items available.',
+    buyGroupSplitInvalid: 'Please enter valid amounts.',
+    buyGroupSplitRemaining: 'Assigned: {{assigned}} · Difference: {{remaining}}',
     undoTransfer: 'Undo transfer',
     filterType: 'Filter by type',
     filterIncome: 'Income',

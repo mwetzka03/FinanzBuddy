@@ -9,7 +9,7 @@ import type {
   PrimaryIncomeImportInput,
 } from '../../lib/types';
 import { useLocale } from '../../i18n/LocaleProvider';
-import { getDashboardSettings, importBankExport, listAccounts, previewBankExport } from '../../tauri/api';
+import { getDashboardSettings, getSetupState, importBankExport, listAccounts, previewBankExport } from '../../tauri/api';
 import { isBankImportAccount, isOberspartopf, isSavingsPotAccount } from '../../lib/accounts';
 import { Modal } from '../common/Modal';
 import { formatEurFromCents, parseEurToCents } from '../../lib/money';
@@ -37,6 +37,7 @@ export function BankImportPanel({ embedded = false }: { embedded?: boolean }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BankImportResult | null>(null);
+  const [setupCompleted, setSetupCompleted] = useState(false);
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.id === accountId) ?? null,
@@ -70,14 +71,18 @@ export function BankImportPanel({ embedded = false }: { embedded?: boolean }) {
     getDashboardSettings()
       .then((settings) => setSalaryMode(settings.periodMode === 'since_last_salary'))
       .catch(() => setSalaryMode(false));
+    getSetupState()
+      .then((state) => setSetupCompleted(state.completed))
+      .catch(() => setSetupCompleted(false));
   }, []);
 
   const balancesReady = useMemo(() => {
+    if (setupCompleted) return true;
     if (childAccounts.length > 0) {
       return childBalances != null && childBalances.length === childAccounts.length;
     }
     return balanceCents != null;
-  }, [childAccounts.length, childBalances, balanceCents]);
+  }, [setupCompleted, childAccounts.length, childBalances, balanceCents]);
 
   const canImport = useMemo(
     () => Boolean(accountId && filePath && balancesReady && preview && !loading),
@@ -126,7 +131,11 @@ export function BankImportPanel({ embedded = false }: { embedded?: boolean }) {
       setForecastName('');
       setUseImportAmount(true);
       setCustomForecastEur('');
-      setModalStep('balance');
+      if (setupCompleted) {
+        setModalStep(null);
+      } else {
+        setModalStep('balance');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -240,6 +249,7 @@ export function BankImportPanel({ embedded = false }: { embedded?: boolean }) {
   async function runImport() {
     if (!filePath || !accountId || !preview || !balancesReady) return;
     if (
+      !setupCompleted &&
       salaryMode &&
       selectedAccount &&
       !isSavingsPotAccount(selectedAccount) &&
@@ -257,11 +267,13 @@ export function BankImportPanel({ embedded = false }: { embedded?: boolean }) {
       const importResult = await importBankExport({
         filePath,
         accountId,
-        currentBalanceCents: childAccounts.length > 0 ? null : balanceCents,
-        balanceAsOfDate: isoToday(),
-        childBalances: childAccounts.length > 0 ? childBalances : null,
+        currentBalanceCents: setupCompleted ? null : childAccounts.length > 0 ? null : balanceCents,
+        balanceAsOfDate: setupCompleted ? null : isoToday(),
+        childBalances: setupCompleted ? null : childAccounts.length > 0 ? childBalances : null,
         primaryIncome:
-          selectedAccount && isSavingsPotAccount(selectedAccount) ? null : buildPrimaryIncomeInput(),
+          setupCompleted || (selectedAccount && isSavingsPotAccount(selectedAccount))
+            ? null
+            : buildPrimaryIncomeInput(),
       });
       setResult(importResult);
     } catch (e) {
@@ -277,7 +289,9 @@ export function BankImportPanel({ embedded = false }: { embedded?: boolean }) {
         <Landmark size={18} aria-hidden />
         <h2>{t('settings.bankImport.title')}</h2>
       </header>
-      <p className="fh-panel-desc">{t('settings.bankImport.desc')}</p>
+      <p className="fh-panel-desc">
+        {setupCompleted ? t('settings.bankImport.followUpDesc') : t('settings.bankImport.desc')}
+      </p>
       <p className="fh-bank-import-hint">{t('settings.bankImport.verifyHint')}</p>
       <p className="fh-bank-import-hint">{t('settings.bankImport.formatHint')}</p>
 
@@ -300,7 +314,7 @@ export function BankImportPanel({ embedded = false }: { embedded?: boolean }) {
             {t('settings.bankImport.chooseFile')}
           </button>
           <span className="fh-bank-import-file-name">{fileLabel || t('settings.bankImport.noFile')}</span>
-          {balancesReady ? (
+          {balancesReady && !setupCompleted ? (
             <button
               type="button"
               className="fh-link-button fh-bank-import-balance-link"

@@ -7,6 +7,7 @@ import type {
   AccountKind,
   BuyItem,
   BuyItemGroup,
+  BuyGroupSplitInput,
   Cadence,
   DayView,
   FixedCost,
@@ -121,6 +122,10 @@ export async function listLedgerTransactions(input: {
   });
 }
 
+export async function listLedgerBuyGroupSplits(ledgerId: string): Promise<BuyGroupSplitInput[]> {
+  return await invoke('list_ledger_buy_group_splits', { ledgerId });
+}
+
 export async function createLedgerTransaction(input: {
   date: IsoDate;
   amountCents: number;
@@ -132,6 +137,7 @@ export async function createLedgerTransaction(input: {
   fixedCostId?: string | null;
   buyItemId?: string | null;
   buyItemGroupId?: string | null;
+  buyGroupSplits?: BuyGroupSplitInput[] | null;
   icon?: string;
   color?: string;
   assignSimilarFixedCost?: boolean;
@@ -150,6 +156,7 @@ export async function updateLedgerTransaction(input: {
   fixedCostId?: string | null;
   buyItemId?: string | null;
   buyItemGroupId?: string | null;
+  buyGroupSplits?: BuyGroupSplitInput[] | null;
   icon?: string;
   color?: string;
   assignSimilarFixedCost?: boolean;

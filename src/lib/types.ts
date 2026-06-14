@@ -86,6 +86,11 @@ export interface BuyItemGroup {
   createdAt: string;
 }
 
+export interface BuyGroupSplitInput {
+  buyItemId: string;
+  amountCents: number;
+}
+
 export type IncomeForecastDueRule = 'calendar_day' | 'first_business_day' | 'last_business_day';
 
 export interface IncomeForecast {

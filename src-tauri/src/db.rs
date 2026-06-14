@@ -312,7 +312,38 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   migrate_depot_linked_ledger(conn)?;
   migrate_buy_item_groups(conn)?;
   migrate_buy_item_group_ledger(conn)?;
+  migrate_ledger_buy_group_splits(conn)?;
 
+  Ok(())
+}
+
+fn migrate_ledger_buy_group_splits(conn: &Connection) -> AppResult<()> {
+  let done: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM app_settings WHERE key = 'ledger_buy_group_splits_v1'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap_or(0);
+  if done > 0 {
+    return Ok(());
+  }
+  conn.execute_batch(
+    r#"
+    CREATE TABLE IF NOT EXISTS ledger_buy_group_splits (
+      id TEXT PRIMARY KEY NOT NULL,
+      ledger_transaction_id TEXT NOT NULL,
+      buy_item_id TEXT NOT NULL UNIQUE,
+      amount_cents INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ledger_buy_group_splits_ledger ON ledger_buy_group_splits(ledger_transaction_id);
+    "#,
+  )?;
+  conn.execute(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('ledger_buy_group_splits_v1', '1')",
+    [],
+  )?;
   Ok(())
 }
 

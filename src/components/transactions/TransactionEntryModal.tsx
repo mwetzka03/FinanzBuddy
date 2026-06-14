@@ -37,9 +37,11 @@ import {
   convertTransferToLedger,
   linkLedgerToIncomeForecast,
   listIncomeForecastOccurrences,
+  listLedgerBuyGroupSplits,
   updateLedgerTransaction,
   updateTransfer,
 } from '../../tauri/api';
+import { BuyGroupSplitModal, type BuyGroupSplitDraft } from './BuyGroupSplitModal';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { DEFAULT_KIND_COLOR, DEFAULT_KIND_ICON } from '../../lib/icons';
 import { useUi } from '../../lib/ui';
@@ -141,6 +143,8 @@ export function TransactionEntryModal({
   const [linkForecastId, setLinkForecastId] = useState('');
   const [linkOccurrenceDate, setLinkOccurrenceDate] = useState<IsoDate | ''>('');
   const [linkOccurrences, setLinkOccurrences] = useState<IsoDate[]>([]);
+  const [splitModalOpen, setSplitModalOpen] = useState(false);
+  const [existingBuyGroupSplits, setExistingBuyGroupSplits] = useState<BuyGroupSplitDraft[]>([]);
 
   const editableIncomeForecasts = useMemo(
     () =>
@@ -204,6 +208,20 @@ export function TransactionEntryModal({
     setLinkForecastId('');
     setLinkOccurrenceDate('');
   }, [open, row, accountId, mainAccountId]);
+
+  useEffect(() => {
+    if (!open || !row?.buyItemGroupId) {
+      setExistingBuyGroupSplits([]);
+      return;
+    }
+    listLedgerBuyGroupSplits(row.id)
+      .then((splits) =>
+        setExistingBuyGroupSplits(
+          splits.map((split) => ({ buyItemId: split.buyItemId, amountCents: split.amountCents })),
+        ),
+      )
+      .catch(() => setExistingBuyGroupSplits([]));
+  }, [open, row?.id, row?.buyItemGroupId]);
 
   useEffect(() => {
     if (!open || !linkForecastId) {
@@ -293,7 +311,31 @@ export function TransactionEntryModal({
   const showIconColorFields =
     showLedgerFields || showTransferFields || showIncomeForecastFields || showExpenseForecastFields;
 
-  async function save() {
+  function buyGroupSplitPayload(splits: BuyGroupSplitDraft[]) {
+    return {
+      buyGroupSplits: splits.map((split) => ({
+        buyItemId: split.buyItemId,
+        amountCents: split.amountCents,
+      })),
+    };
+  }
+
+  function needsBuyGroupSplit(): boolean {
+    if (expenseCategory.kind !== 'buyGroup' || !expenseCategory.id) return false;
+    if (isEdit && row) {
+      if (row.kind !== 'expense' && row.kind !== 'buy_apply') return false;
+    } else if (!isLedgerCreateType(entryType as CreateEntryType) || entryType !== 'expense') {
+      return false;
+    }
+    return true;
+  }
+
+  const selectedBuyGroup = useMemo(
+    () => buyItemGroups.find((g) => g.id === expenseCategory.id) ?? null,
+    [buyItemGroups, expenseCategory.id],
+  );
+
+  async function performSave(buyGroupSplits?: BuyGroupSplitDraft[]) {
     onError(null);
     try {
       if (isEdit && row) {
@@ -350,6 +392,9 @@ export function TransactionEntryModal({
           } else {
             amountCents = row.amountCents;
           }
+          const categoryPayload = ledgerCategoryIds(
+            canAssignCategory(finalKind) ? expenseCategory : { kind: 'none', id: null },
+          );
           await updateLedgerTransaction({
             id: row.id,
             date,
@@ -357,7 +402,8 @@ export function TransactionEntryModal({
             kind: finalKind,
             title: title.trim() || kindLabel(finalKind, t),
             notes: description.trim() ? description : null,
-            ...ledgerCategoryIds(canAssignCategory(finalKind) ? expenseCategory : { kind: 'none', id: null }),
+            ...categoryPayload,
+            ...(buyGroupSplits ? buyGroupSplitPayload(buyGroupSplits) : {}),
             ...fixedCostAssignmentOptions(),
             icon,
             color,
@@ -430,6 +476,9 @@ export function TransactionEntryModal({
       } else if (isLedgerCreateType(entryType)) {
         const ledgerAccount = fromAccountId || accountId || mainAccountId;
         if (!amount.trim() || !ledgerAccount) return;
+        const categoryPayload = ledgerCategoryIds(
+          canAssignCategory(entryType) ? expenseCategory : { kind: 'none', id: null },
+        );
         await createLedgerTransaction({
           date,
           amountCents: amountCentsForKind(entryType, parseEurToCents(amount)),
@@ -437,7 +486,8 @@ export function TransactionEntryModal({
           kind: entryType,
           title: title.trim() ? title : kindLabel(entryType, t),
           notes: description.trim() ? description : null,
-          ...ledgerCategoryIds(canAssignCategory(entryType) ? expenseCategory : { kind: 'none', id: null }),
+          ...categoryPayload,
+          ...(buyGroupSplits ? buyGroupSplitPayload(buyGroupSplits) : {}),
           ...fixedCostAssignmentOptions(),
           icon,
           color,
@@ -447,6 +497,15 @@ export function TransactionEntryModal({
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  async function save() {
+    if (needsBuyGroupSplit()) {
+      if (!amount.trim()) return;
+      setSplitModalOpen(true);
+      return;
+    }
+    await performSave();
   }
 
   const saveDisabled = (() => {
@@ -866,6 +925,19 @@ export function TransactionEntryModal({
           </div>
         </div>
       </div>
+
+      <BuyGroupSplitModal
+        open={splitModalOpen}
+        group={selectedBuyGroup}
+        buyItems={buyItems}
+        txAmountCents={Math.abs(parseEurToCents(amount || '0'))}
+        initialSplits={existingBuyGroupSplits}
+        onClose={() => setSplitModalOpen(false)}
+        onConfirm={async (splits) => {
+          setSplitModalOpen(false);
+          await performSave(splits);
+        }}
+      />
     </Modal>
   );
 }

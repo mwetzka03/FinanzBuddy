@@ -5,7 +5,10 @@ use super::helpers::{
   to_cmd_result, CmdResult,
 };
 use crate::buy_assignment::{apply_buy_item_assignment, clear_buy_assignment_for_transaction};
-use crate::buy_group_assignment::{apply_buy_group_assignment, clear_buy_group_assignment_for_transaction, revert_buy_group};
+use crate::buy_group_assignment::{
+  apply_buy_group_assignment, clear_buy_group_assignment_for_transaction,
+  list_ledger_buy_group_splits as load_ledger_buy_group_splits, BuyGroupSplitInput,
+};
 use crate::cost_assignment::{apply_expense_category_assignment, normalize_expense_category_ids};
 use crate::error::{AppError, AppResult};
 use crate::models::LedgerTransaction;
@@ -31,9 +34,20 @@ pub struct CreateLedgerTransactionInput {
   pub fixed_cost_id: Option<String>,
   pub buy_item_id: Option<String>,
   pub buy_item_group_id: Option<String>,
+  pub buy_group_splits: Option<Vec<BuyGroupSplitInput>>,
   pub icon: Option<String>,
   pub color: Option<String>,
   pub assign_similar_fixed_cost: Option<bool>,
+}
+
+#[tauri::command]
+pub fn list_ledger_buy_group_splits(state: State<'_, AppState>, ledger_id: String) -> CmdResult<Vec<BuyGroupSplitInput>> {
+  to_cmd_result(list_ledger_buy_group_splits_inner(state, ledger_id))
+}
+
+fn list_ledger_buy_group_splits_inner(state: State<'_, AppState>, ledger_id: String) -> AppResult<Vec<BuyGroupSplitInput>> {
+  let conn = state.conn.lock().unwrap();
+  load_ledger_buy_group_splits(&conn, &ledger_id)
 }
 
 #[tauri::command]
@@ -174,7 +188,12 @@ fn create_ledger_transaction_inner(state: State<'_, AppState>, input: CreateLedg
       )?;
     }
     apply_buy_item_assignment(&conn, &id, buy_item_id.as_deref())?;
-    apply_buy_group_assignment(&conn, &id, buy_item_group_id.as_deref())?;
+    apply_buy_group_assignment(
+      &conn,
+      &id,
+      buy_item_group_id.as_deref(),
+      input.buy_group_splits.as_deref(),
+    )?;
   } else {
     resync_variable_cost_months(&conn, variable_cost_id.as_deref(), Some(input.date.as_str()))?;
   }
@@ -194,6 +213,7 @@ pub struct UpdateLedgerTransactionInput {
   pub fixed_cost_id: Option<String>,
   pub buy_item_id: Option<String>,
   pub buy_item_group_id: Option<String>,
+  pub buy_group_splits: Option<Vec<BuyGroupSplitInput>>,
   pub icon: Option<String>,
   pub color: Option<String>,
   pub assign_similar_fixed_cost: Option<bool>,
@@ -277,7 +297,12 @@ fn update_ledger_transaction_inner(state: State<'_, AppState>, input: UpdateLedg
       )?;
     }
     apply_buy_item_assignment(&conn, &input.id, buy_item_id.as_deref())?;
-    apply_buy_group_assignment(&conn, &input.id, buy_item_group_id.as_deref())?;
+    apply_buy_group_assignment(
+      &conn,
+      &input.id,
+      buy_item_group_id.as_deref(),
+      input.buy_group_splits.as_deref(),
+    )?;
   } else {
     clear_buy_assignment_for_transaction(&conn, &input.id)?;
     clear_buy_group_assignment_for_transaction(&conn, &input.id)?;
@@ -314,8 +339,8 @@ fn delete_ledger_transaction_inner(state: State<'_, AppState>, id: String) -> Ap
   if let Some(ref bid) = buy_id {
     crate::buy_assignment::revert_buy_item(&conn, bid)?;
   }
-  if let Some(ref gid) = group_id {
-    revert_buy_group(&conn, gid)?;
+  if group_id.is_some() {
+    clear_buy_group_assignment_for_transaction(&conn, &id)?;
   }
   conn.execute("DELETE FROM ledger_transactions WHERE id = ?1", params![id])?;
   resync_variable_cost_months(&conn, vc_id.as_deref(), Some(date.as_str()))?;

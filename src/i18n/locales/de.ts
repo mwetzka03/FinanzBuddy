@@ -195,6 +195,8 @@ export const de = {
       manualSetupBlocked:
         'Bankimport ist bei manueller Einrichtung deaktiviert. Nutze „App zurücksetzen“, um die Einrichtung mit Bankimport neu zu starten.',
       desc: 'Sparkassen-Exportdatei laden und Umsätze sowie Anfangssaldo in ein Konto übernehmen. Bereits importierte Umsätze werden anhand der Bank-Referenz übersprungen.',
+      followUpDesc:
+        'Neue Umsätze aus dem Bankexport hinzufügen. Bereits importierte Buchungen bleiben unverändert — kein Kontostand und keine Rückrechnung nötig.',
       verifyHint:
         'Beim Bankimport können Abweichungen entstehen (z. B. fehlende oder doppelt erkannte Umsätze). Bitte prüfe nach dem Import unter Transaktionen, ob alle Buchungen stimmen.',
       formatHint:
@@ -270,6 +272,12 @@ export const de = {
     oneTimeIncomeHint: 'Ohne Rhythmus und Fälligkeit — erscheint als einmalige Einnahme-Prognose in den Transaktionen.',
     assignSimilarFixedCosts: 'Alle ähnlichen zuordnen',
     assignSimilarFixedCostsHint: 'Gleiches Konto, IBAN und passendes Namenswort',
+    buyGroupSplitTitle: 'Betrag auf Gruppe aufteilen',
+    buyGroupSplitHint:
+      'Ordne den Buchungsbetrag ({{total}}) Einträgen der Gruppe „{{group}}“ zu. Nicht alle Einträge müssen belegt werden — die Summe muss dem Buchungsbetrag entsprechen.',
+    buyGroupSplitEmpty: 'Keine offenen Gruppeneinträge verfügbar.',
+    buyGroupSplitInvalid: 'Bitte gültige Beträge eingeben.',
+    buyGroupSplitRemaining: 'Zugeordnet: {{assigned}} · Differenz: {{remaining}}',
     undoTransfer: 'Transfer rückgängig',
     filterType: 'Typ filtern',
     filterIncome: 'Einnahmen',

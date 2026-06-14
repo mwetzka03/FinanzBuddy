@@ -603,6 +603,8 @@ fn import_bank_export_inner(
     ));
   }
 
+  let append_only = crate::setup::is_setup_completed(&conn)?;
+
   let base_time = Utc::now();
   let mut imported_count = 0u32;
   let mut skipped_count = 0u32;
@@ -622,17 +624,21 @@ fn import_bank_export_inner(
   let is_oberspartopf = account_kind == "oberspartopf";
   let is_savings_pot = crate::accounts::is_savings_pot_kind(&account_kind);
 
-  let primary_plan = primary_income
-    .as_ref()
-    .map(|input| resolve_primary_income_plan(&statement, input))
-    .transpose()?;
+  let primary_plan = if append_only {
+    None
+  } else {
+    primary_income
+      .as_ref()
+      .map(|input| resolve_primary_income_plan(&statement, input))
+      .transpose()?
+  };
 
-  let primary_salary_date = if is_savings_pot {
+  let primary_salary_date = if append_only || is_savings_pot {
     None
   } else {
     primary_plan.as_ref().map(|plan| plan.anchor_date.as_str())
   };
-  let primary_forecast_id = if is_savings_pot {
+  let primary_forecast_id = if append_only || is_savings_pot {
     None
   } else if let (Some(ref income_input), Some(ref plan)) = (&primary_income, &primary_plan) {
     let tx = &statement.transactions[plan.anchor_index];
@@ -646,8 +652,33 @@ fn import_bank_export_inner(
     None
   };
 
-  if is_savings_pot {
-    if is_oberspartopf {
+  if !append_only {
+    if is_savings_pot {
+      if is_oberspartopf {
+        let children = child_balances.unwrap_or_default();
+        if children.is_empty() {
+          return Err(AppError::Invalid(
+            "Bitte Kontostand für jeden Unterspartopf angeben.".into(),
+          ));
+        }
+        for child in &children {
+          crate::accounts::set_import_balance(
+            &conn,
+            &child.account_id,
+            child.current_balance_cents,
+            &balance_as_of,
+          )?;
+          remove_bank_import_opening_adjustments(&conn, &child.account_id)?;
+        }
+      } else if let Some(current) = current_balance_cents {
+        crate::accounts::set_import_balance(&conn, &account_id, current, &balance_as_of)?;
+        remove_bank_import_opening_adjustments(&conn, &account_id)?;
+      } else {
+        return Err(AppError::Invalid(
+          "Bitte aktuellen Kontostand angeben.".into(),
+        ));
+      }
+    } else if is_oberspartopf {
       let children = child_balances.unwrap_or_default();
       if children.is_empty() {
         return Err(AppError::Invalid(
@@ -655,61 +686,38 @@ fn import_bank_export_inner(
         ));
       }
       for child in &children {
-        crate::accounts::set_import_balance(
+        let opening = derive_child_opening_from_balance(
           &conn,
+          &account_id,
           &child.account_id,
           child.current_balance_cents,
           &balance_as_of,
+          &statement.transactions,
+          primary_salary_date,
         )?;
-        remove_bank_import_opening_adjustments(&conn, &child.account_id)?;
+        let source_id = format!(
+          "bank_import:opbd:{}:{}",
+          child.account_id, opening.date
+        );
+        upsert_bank_adjustment(
+          &conn,
+          &child.account_id,
+          &opening.date,
+          opening.amount_cents,
+          "Bankimport Anfangssaldo",
+          &source_id,
+          base_time,
+        )?;
+        opening_balance_set = true;
       }
     } else if let Some(current) = current_balance_cents {
       crate::accounts::set_import_balance(&conn, &account_id, current, &balance_as_of)?;
       remove_bank_import_opening_adjustments(&conn, &account_id)?;
-    } else {
+    } else if statement.opening_balance.is_none() {
       return Err(AppError::Invalid(
-        "Bitte aktuellen Kontostand angeben.".into(),
+        "Bitte aktuellen Kontostand angeben — die Exportdatei enthält keinen Saldo.".into(),
       ));
     }
-  } else if is_oberspartopf {
-    let children = child_balances.unwrap_or_default();
-    if children.is_empty() {
-      return Err(AppError::Invalid(
-        "Bitte Kontostand für jeden Unterspartopf angeben.".into(),
-      ));
-    }
-    for child in &children {
-      let opening = derive_child_opening_from_balance(
-        &conn,
-        &account_id,
-        &child.account_id,
-        child.current_balance_cents,
-        &balance_as_of,
-        &statement.transactions,
-        primary_salary_date,
-      )?;
-      let source_id = format!(
-        "bank_import:opbd:{}:{}",
-        child.account_id, opening.date
-      );
-      upsert_bank_adjustment(
-        &conn,
-        &child.account_id,
-        &opening.date,
-        opening.amount_cents,
-        "Bankimport Anfangssaldo",
-        &source_id,
-        base_time,
-      )?;
-      opening_balance_set = true;
-    }
-  } else if let Some(current) = current_balance_cents {
-    crate::accounts::set_import_balance(&conn, &account_id, current, &balance_as_of)?;
-    remove_bank_import_opening_adjustments(&conn, &account_id)?;
-  } else if statement.opening_balance.is_none() {
-    return Err(AppError::Invalid(
-      "Bitte aktuellen Kontostand angeben — die Exportdatei enthält keinen Saldo.".into(),
-    ));
   }
 
   for (index, tx) in statement.transactions.iter().enumerate() {
@@ -723,7 +731,12 @@ fn import_bank_export_inner(
         |r| r.get(0),
       )
       .optional()?;
-    if let Some(existing_id) = existing {
+    if let Some(_existing_id) = existing {
+      if append_only {
+        skipped_count += 1;
+        continue;
+      }
+      let existing_id = _existing_id;
       let kind = if tx.amount_cents >= 0 { "income" } else { "expense" };
       let icon = if kind == "income" { "banknote" } else { "shop" };
       let color = if kind == "income" { "#22c55e" } else { "#ef4444" };

@@ -49,6 +49,7 @@ fn main() {
       commands::accounts_cmd::set_account_balance_source,
       commands::accounts_cmd::set_depot_linked_ledger_account,
       commands::ledger::list_ledger_transactions,
+      commands::ledger::list_ledger_buy_group_splits,
       commands::ledger::create_ledger_transaction,
       commands::ledger::create_transfer,
       commands::ledger::delete_transfer,

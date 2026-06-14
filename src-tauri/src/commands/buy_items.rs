@@ -350,7 +350,18 @@ fn apply_buy_item_group_inner(state: State<'_, AppState>, input: ApplyBuyItemGro
     .map(|s| s.trim())
     .filter(|s| !s.is_empty())
   {
-    crate::buy_group_assignment::apply_buy_group_assignment(&conn, ledger_id, Some(input.group_id.as_str()))?;
+    let tx_total: i64 = conn.query_row(
+      "SELECT ABS(amount_cents) FROM ledger_transactions WHERE id = ?1",
+      params![ledger_id],
+      |r| r.get(0),
+    )?;
+    let splits = crate::buy_group_assignment::build_full_group_splits(&conn, &input.group_id, tx_total)?;
+    crate::buy_group_assignment::apply_buy_group_assignment(
+      &conn,
+      ledger_id,
+      Some(input.group_id.as_str()),
+      Some(&splits),
+    )?;
     return Ok(());
   }
   let main_id = get_main_account_id(&conn)?;

@@ -14,6 +14,8 @@ export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
     const table = tableRef.current;
     if (!table) return;
 
+    let raf = 0;
+
     function measure() {
       const tableEl = tableRef.current;
       if (!tableEl) return;
@@ -33,12 +35,11 @@ export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
       let minLeft = Infinity;
       let maxRight = -Infinity;
 
-      rows.forEach((row) => {
-        row.querySelectorAll<HTMLElement>('[data-amount-col]').forEach((cell) => {
-          const rect = cell.getBoundingClientRect();
-          minLeft = Math.min(minLeft, rect.left);
-          maxRight = Math.max(maxRight, rect.right);
-        });
+      tableEl.querySelectorAll<HTMLElement>('[data-amount-col]').forEach((cell) => {
+        const rect = cell.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        minLeft = Math.min(minLeft, rect.left);
+        maxRight = Math.max(maxRight, rect.right);
       });
 
       if (minLeft === Infinity) {
@@ -46,9 +47,15 @@ export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
         return;
       }
 
+      const headCells = tableEl.querySelectorAll<HTMLElement>('.fh-table-head [data-amount-col]');
+      const topFromHead =
+        headCells.length > 0
+          ? Math.min(...Array.from(headCells).map((cell) => cell.getBoundingClientRect().top))
+          : firstRowRect.top;
+
       const left = Math.max(0, minLeft - tableRect.left);
       const right = Math.min(tableRect.width, maxRight - tableRect.left);
-      const top = Math.max(0, firstRowRect.top - tableRect.top);
+      const top = Math.max(0, topFromHead - tableRect.top);
 
       setBands([
         {
@@ -60,23 +67,33 @@ export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
       ]);
     }
 
-    measure();
+    function scheduleMeasure() {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        measure();
+        requestAnimationFrame(measure);
+      });
+    }
 
-    const observer = new ResizeObserver(measure);
+    scheduleMeasure();
+    document.fonts?.ready.then(scheduleMeasure).catch(() => undefined);
+
+    const observer = new ResizeObserver(scheduleMeasure);
     observer.observe(table);
 
-    const mutationObserver = new MutationObserver(measure);
+    const mutationObserver = new MutationObserver(scheduleMeasure);
     mutationObserver.observe(table, { childList: true, subtree: true, attributes: true });
 
     const scrollParent = table.closest('.fh-table-scroll');
-    scrollParent?.addEventListener('scroll', measure, { passive: true });
-    window.addEventListener('resize', measure);
+    scrollParent?.addEventListener('scroll', scheduleMeasure, { passive: true });
+    window.addEventListener('resize', scheduleMeasure);
 
     return () => {
+      cancelAnimationFrame(raf);
       observer.disconnect();
       mutationObserver.disconnect();
-      scrollParent?.removeEventListener('scroll', measure);
-      window.removeEventListener('resize', measure);
+      scrollParent?.removeEventListener('scroll', scheduleMeasure);
+      window.removeEventListener('resize', scheduleMeasure);
     };
   }, [tableRef]);
 
