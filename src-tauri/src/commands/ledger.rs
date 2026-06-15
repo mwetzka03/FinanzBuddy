@@ -9,13 +9,18 @@ use crate::buy_group_assignment::{
   apply_buy_group_assignment, clear_buy_group_assignment_for_transaction,
   list_ledger_buy_group_splits as load_ledger_buy_group_splits, BuyGroupSplitInput,
 };
-use crate::cost_assignment::{apply_expense_category_assignment, normalize_expense_category_ids};
+use crate::budget_pool_assignment::{
+  apply_budget_pool_splits, apply_variable_cost_splits, clear_budget_pool_splits_for_ledger,
+  clear_expense_splits_for_ledger, clear_variable_cost_splits_for_ledger, list_ledger_budget_pool_splits,
+  list_ledger_variable_cost_splits, sync_budget_pool_display_style, BudgetPoolSplitInput, VariableCostSplitInput,
+};
 use crate::error::{AppError, AppResult};
 use crate::models::LedgerTransaction;
 use crate::state::AppState;
 use chrono::Utc;
 use rusqlite::params;
-use serde::Deserialize;
+use crate::cost_assignment::{apply_expense_category_assignment, normalize_expense_category_ids};
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use uuid::Uuid;
 
@@ -35,9 +40,94 @@ pub struct CreateLedgerTransactionInput {
   pub buy_item_id: Option<String>,
   pub buy_item_group_id: Option<String>,
   pub buy_group_splits: Option<Vec<BuyGroupSplitInput>>,
+  pub variable_cost_splits: Option<Vec<VariableCostSplitInput>>,
+  pub budget_pool_splits: Option<Vec<BudgetPoolSplitInput>>,
   pub icon: Option<String>,
   pub color: Option<String>,
   pub assign_similar_fixed_cost: Option<bool>,
+}
+
+fn has_variable_cost_split_input(variable_splits: &Option<Vec<VariableCostSplitInput>>) -> bool {
+  variable_splits.as_ref().is_some_and(|rows| !rows.is_empty())
+}
+
+fn has_budget_pool_split_input(budget_pool_splits: &Option<Vec<BudgetPoolSplitInput>>) -> bool {
+  budget_pool_splits.as_ref().is_some_and(|rows| !rows.is_empty())
+}
+
+fn apply_ledger_expense_assignments(
+  conn: &rusqlite::Connection,
+  ledger_id: &str,
+  variable_cost_id: &Option<String>,
+  fixed_cost_id: &Option<String>,
+  buy_item_id: &Option<String>,
+  buy_item_group_id: &Option<String>,
+  variable_cost_splits: &Option<Vec<VariableCostSplitInput>>,
+  budget_pool_splits: &Option<Vec<BudgetPoolSplitInput>>,
+  buy_group_splits: &Option<Vec<BuyGroupSplitInput>>,
+  assign_similar_fixed_cost: bool,
+) -> AppResult<()> {
+  if has_variable_cost_split_input(variable_cost_splits) {
+    if fixed_cost_id.is_some() || buy_item_id.is_some() || buy_item_group_id.is_some() {
+      return Err(AppError::Invalid(
+        "Variablen-Aufteilung nicht mit Fixkosten oder Einkaufszettel kombinierbar".into(),
+      ));
+    }
+    apply_variable_cost_splits(conn, ledger_id, variable_cost_splits.as_ref().unwrap())?;
+  } else if variable_cost_id.is_some() || fixed_cost_id.is_some() {
+    clear_variable_cost_splits_for_ledger(conn, ledger_id)?;
+    apply_expense_category_assignment(
+      conn,
+      ledger_id,
+      variable_cost_id.as_deref(),
+      fixed_cost_id.as_deref(),
+      assign_similar_fixed_cost,
+    )?;
+  } else {
+    clear_variable_cost_splits_for_ledger(conn, ledger_id)?;
+    conn.execute(
+      "UPDATE ledger_transactions SET variable_cost_id = NULL, fixed_cost_id = NULL WHERE id = ?1",
+      params![ledger_id],
+    )?;
+  }
+
+  apply_buy_item_assignment(conn, ledger_id, buy_item_id.as_deref())?;
+  apply_buy_group_assignment(
+    conn,
+    ledger_id,
+    buy_item_group_id.as_deref(),
+    buy_group_splits.as_deref(),
+  )?;
+
+  if has_budget_pool_split_input(budget_pool_splits) {
+    apply_budget_pool_splits(conn, ledger_id, budget_pool_splits.as_ref().unwrap())?;
+  } else {
+    clear_budget_pool_splits_for_ledger(conn, ledger_id)?;
+  }
+
+  sync_budget_pool_display_style(conn, ledger_id)?;
+
+  Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LedgerExpenseSplits {
+  pub variable_cost_splits: Vec<VariableCostSplitInput>,
+  pub budget_pool_splits: Vec<BudgetPoolSplitInput>,
+}
+
+#[tauri::command]
+pub fn list_ledger_expense_splits(state: State<'_, AppState>, ledger_id: String) -> CmdResult<LedgerExpenseSplits> {
+  to_cmd_result(list_ledger_expense_splits_inner(state, ledger_id))
+}
+
+fn list_ledger_expense_splits_inner(state: State<'_, AppState>, ledger_id: String) -> AppResult<LedgerExpenseSplits> {
+  let conn = state.conn.lock().unwrap();
+  Ok(LedgerExpenseSplits {
+    variable_cost_splits: list_ledger_variable_cost_splits(&conn, &ledger_id)?,
+    budget_pool_splits: list_ledger_budget_pool_splits(&conn, &ledger_id)?,
+  })
 }
 
 #[tauri::command]
@@ -178,21 +268,17 @@ fn create_ledger_transaction_inner(state: State<'_, AppState>, input: CreateLedg
     ],
   )?;
   if input.kind == "expense" {
-    if variable_cost_id.is_some() || fixed_cost_id.is_some() {
-      apply_expense_category_assignment(
-        &conn,
-        &id,
-        variable_cost_id.as_deref(),
-        fixed_cost_id.as_deref(),
-        input.assign_similar_fixed_cost.unwrap_or(false),
-      )?;
-    }
-    apply_buy_item_assignment(&conn, &id, buy_item_id.as_deref())?;
-    apply_buy_group_assignment(
+    apply_ledger_expense_assignments(
       &conn,
       &id,
-      buy_item_group_id.as_deref(),
-      input.buy_group_splits.as_deref(),
+      &variable_cost_id,
+      &fixed_cost_id,
+      &buy_item_id,
+      &buy_item_group_id,
+      &input.variable_cost_splits,
+      &input.budget_pool_splits,
+      &input.buy_group_splits,
+      input.assign_similar_fixed_cost.unwrap_or(false),
     )?;
   } else {
     resync_variable_cost_months(&conn, variable_cost_id.as_deref(), Some(input.date.as_str()))?;
@@ -214,6 +300,8 @@ pub struct UpdateLedgerTransactionInput {
   pub buy_item_id: Option<String>,
   pub buy_item_group_id: Option<String>,
   pub buy_group_splits: Option<Vec<BuyGroupSplitInput>>,
+  pub variable_cost_splits: Option<Vec<VariableCostSplitInput>>,
+  pub budget_pool_splits: Option<Vec<BudgetPoolSplitInput>>,
   pub icon: Option<String>,
   pub color: Option<String>,
   pub assign_similar_fixed_cost: Option<bool>,
@@ -282,30 +370,22 @@ fn update_ledger_transaction_inner(state: State<'_, AppState>, input: UpdateLedg
     ],
   )?;
   if input.kind == "expense" {
-    if variable_cost_id.is_some() || fixed_cost_id.is_some() {
-      apply_expense_category_assignment(
-        &conn,
-        &input.id,
-        variable_cost_id.as_deref(),
-        fixed_cost_id.as_deref(),
-        input.assign_similar_fixed_cost.unwrap_or(false),
-      )?;
-    } else {
-      conn.execute(
-        "UPDATE ledger_transactions SET variable_cost_id = NULL, fixed_cost_id = NULL WHERE id = ?1",
-        params![input.id],
-      )?;
-    }
-    apply_buy_item_assignment(&conn, &input.id, buy_item_id.as_deref())?;
-    apply_buy_group_assignment(
+    apply_ledger_expense_assignments(
       &conn,
       &input.id,
-      buy_item_group_id.as_deref(),
-      input.buy_group_splits.as_deref(),
+      &variable_cost_id,
+      &fixed_cost_id,
+      &buy_item_id,
+      &buy_item_group_id,
+      &input.variable_cost_splits,
+      &input.budget_pool_splits,
+      &input.buy_group_splits,
+      input.assign_similar_fixed_cost.unwrap_or(false),
     )?;
   } else {
     clear_buy_assignment_for_transaction(&conn, &input.id)?;
     clear_buy_group_assignment_for_transaction(&conn, &input.id)?;
+    clear_expense_splits_for_ledger(&conn, &input.id)?;
     conn.execute(
       "UPDATE ledger_transactions SET variable_cost_id = NULL, fixed_cost_id = NULL, buy_item_id = NULL, buy_item_group_id = NULL WHERE id = ?1",
       params![input.id],
@@ -342,6 +422,7 @@ fn delete_ledger_transaction_inner(state: State<'_, AppState>, id: String) -> Ap
   if group_id.is_some() {
     clear_buy_group_assignment_for_transaction(&conn, &id)?;
   }
+  clear_expense_splits_for_ledger(&conn, &id)?;
   conn.execute("DELETE FROM ledger_transactions WHERE id = ?1", params![id])?;
   resync_variable_cost_months(&conn, vc_id.as_deref(), Some(date.as_str()))?;
   Ok(())

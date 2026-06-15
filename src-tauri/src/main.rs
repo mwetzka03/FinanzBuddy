@@ -1,5 +1,6 @@
 mod accounts;
 mod bank_import;
+mod budget_pool_assignment;
 mod buy_assignment;
 mod buy_group_assignment;
 mod calc_log;
@@ -49,6 +50,13 @@ fn main() {
       commands::accounts_cmd::set_account_balance_source,
       commands::accounts_cmd::set_depot_linked_ledger_account,
       commands::ledger::list_ledger_transactions,
+      commands::variable_costs_cmd::delete_variable_cost,
+      commands::budget_pools::list_budget_pools,
+      commands::budget_pools::get_budget_pool_period_history,
+      commands::budget_pools::create_budget_pool,
+      commands::budget_pools::update_budget_pool,
+      commands::budget_pools::delete_budget_pool,
+      commands::ledger::list_ledger_expense_splits,
       commands::ledger::list_ledger_buy_group_splits,
       commands::ledger::create_ledger_transaction,
       commands::ledger::create_transfer,

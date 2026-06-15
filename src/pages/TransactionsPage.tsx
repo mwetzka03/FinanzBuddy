@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Account, BuyItem, BuyItemGroup, FixedCost, IncomeForecast, IsoDate, IsoMonth, LedgerTransaction, VariableCost } from '../lib/types';
+import type { Account, BuyItem, BuyItemGroup, BudgetPool, FixedCost, IncomeForecast, IsoDate, IsoMonth, LedgerTransaction, VariableCost } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { EntityIconBadge } from '../components/common/AppIcon';
 import { AmountTable } from '../components/data/AmountTable';
-import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
+import { useTablePagination, TablePaginationBar, useTableSearch } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
 import { TransactionEntryModal } from '../components/transactions/TransactionEntryModal';
@@ -34,6 +34,7 @@ import {
   listAccounts,
   listBuyItemGroups,
   listBuyItems,
+  listBudgetPools,
   listFixedCosts,
   listIncomeForecasts,
   listLedgerTransactions,
@@ -85,7 +86,9 @@ export function TransactionsPage() {
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([]);
   const [buyItems, setBuyItems] = useState<BuyItem[]>([]);
   const [buyItemGroups, setBuyItemGroups] = useState<BuyItemGroup[]>([]);
+  const [budgetPools, setBudgetPools] = useState<BudgetPool[]>([]);
   const [incomeForecasts, setIncomeForecasts] = useState<IncomeForecast[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [accountId, setAccountId] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<TransactionTypeFilter>(() => defaultTransactionTypeFilter());
   const [periodScope, setPeriodScope] = useState<'all' | 'current'>('all');
@@ -169,15 +172,30 @@ export function TransactionsPage() {
     return filterUnifiedEntriesByMonth(byKind, effectiveMonthFilter);
   }, [unifiedRows, typeFilter, effectiveMonthFilter]);
 
+  const searchedRows = useTableSearch(filteredRows, searchQuery, (entry, query) => {
+    const title = entryTitleForSearch(entry).toLowerCase();
+    const notes = (entry.ledger?.notes ?? entry.notes ?? '').toLowerCase();
+    const kind = kindLabel(entry.displayKind, t).toLowerCase();
+    const amount = formatEntryAmount(entry).toLowerCase();
+    return title.includes(query) || notes.includes(query) || kind.includes(query) || amount.includes(query);
+  });
+
+  function entryTitleForSearch(entry: UnifiedEntry): string {
+    if (entry.ledger) {
+      return ledgerRowTitle(entry.ledger, accountMap, fixedCostMap, variableCostMap, buyItemMap, buyItemGroupMap);
+    }
+    return entry.title;
+  }
+
   const sortedRows = useMemo(
     () =>
-      sortByState(filteredRows, sort, {
+      sortByState(searchedRows, sort, {
         date: (e) => e.sortDate ?? e.date ?? '',
         kind: (e) => e.displayKind,
-        title: (e) => entryTitle(e),
+        title: (e) => entryTitleForSearch(e),
         amount: (e) => entryAmountCentsForTable(e),
       }),
-    [filteredRows, sort],
+    [searchedRows, sort, accountMap, fixedCostMap, variableCostMap, buyItemMap, buyItemGroupMap],
   );
   const pagination = useTablePagination(sortedRows);
 
@@ -190,13 +208,14 @@ export function TransactionsPage() {
             start: monthStartDate(effectiveMonthFilter),
             end: monthEndDate(effectiveMonthFilter),
           };
-    const [ledger, forecasts, fixed, variables, buys, buyGroups] = await Promise.all([
+    const [ledger, forecasts, fixed, variables, buys, buyGroups, pools] = await Promise.all([
       listLedgerTransactions(ledgerOpts),
       listIncomeForecasts(),
       listFixedCosts(),
       listVariableCosts(),
       listBuyItems(),
       listBuyItemGroups(),
+      listBudgetPools(),
     ]);
     setLedgerRows(ledger);
     setIncomeForecasts(forecasts);
@@ -204,6 +223,7 @@ export function TransactionsPage() {
     setVariableCosts(variables);
     setBuyItems(buys);
     setBuyItemGroups(buyGroups);
+    setBudgetPools(pools);
 
     const forecastDates = new Map<string, IsoDate[]>();
     await Promise.all(
@@ -370,7 +390,7 @@ export function TransactionsPage() {
   }
 
   return (
-    <PageShell title={t('transactions.title')} intro={t('transactions.intro')} error={error}>
+    <PageShell title={t('transactions.title')} intro={t('transactions.intro')} error={error} onErrorDismiss={() => setError(null)}>
       <div className="fh-transactions-toolbar">
         <DashboardAccountSelect accounts={ledgerAccounts} value={accountId} onChange={setAccountId} />
         <div style={{ ...ui.field, width: '100%', maxWidth: 520, marginBottom: 0 }}>
@@ -477,6 +497,9 @@ export function TransactionsPage() {
             totalItems={pagination.totalItems}
             pageSize={pagination.pageSize}
             onPageChange={pagination.setPage}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            searchPlaceholder={t('transactions.searchPlaceholder')}
           />
           {sortedRows.length === 0 ? (
             <div style={{ padding: 12, color: ui.colors.textMuted }}>{t('transactions.empty')}</div>
@@ -552,6 +575,7 @@ export function TransactionsPage() {
         accountId={effectiveAccountId}
         accounts={accounts}
         variableCosts={variableCosts}
+        budgetPools={budgetPools}
         fixedCosts={fixedCosts}
         buyItems={buyItems}
         buyItemGroups={buyItemGroups}

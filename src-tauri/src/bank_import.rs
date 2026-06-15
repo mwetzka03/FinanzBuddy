@@ -184,18 +184,30 @@ fn try_match_income_forecast(
       if linked > 0 {
         continue;
       }
-      let source_id = crate::income_actuals::income_forecast_source_id(&id, date);
-      let exists: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM ledger_transactions WHERE source_id = ?1",
-        params![source_id],
-        |r| r.get(0),
-      )?;
-      if exists > 0 {
-        continue;
-      }
       return Ok(Some((id, date.to_string())));
     }
   }
+
+  if let Some(primary_id) = crate::accounts::get_primary_income_forecast_id(conn)? {
+    let (forecast_amount, forecast_account): (i64, String) = conn.query_row(
+      "SELECT amount_cents, COALESCE(account_id, ?1) FROM income_forecasts WHERE id = ?2 AND COALESCE(active, 1) = 1",
+      params![account_id, primary_id],
+      |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    if forecast_amount == amount_cents && forecast_account == account_id {
+      let occurrence = crate::dashboard_period::primary_income_occurrence_for_date(conn, date)?
+        .unwrap_or_else(|| date.to_string());
+      let linked: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM income_forecast_actuals WHERE income_forecast_id = ?1 AND occurrence_date = ?2 AND ledger_transaction_id IS NOT NULL",
+        params![primary_id, occurrence],
+        |r| r.get(0),
+      )?;
+      if linked == 0 {
+        return Ok(Some((primary_id, occurrence)));
+      }
+    }
+  }
+
   Ok(None)
 }
 
@@ -382,6 +394,19 @@ fn income_forecast_auto_match_allowed(
   conn: &rusqlite::Connection,
   tx: &ParsedTransaction,
 ) -> AppResult<bool> {
+  if tx.amount_cents <= 0 {
+    return Ok(false);
+  }
+  if let Some(primary_id) = crate::accounts::get_primary_income_forecast_id(conn)? {
+    let forecast_amount: i64 = conn.query_row(
+      "SELECT amount_cents FROM income_forecasts WHERE id = ?1",
+      params![primary_id],
+      |r| r.get(0),
+    )?;
+    if forecast_amount == tx.amount_cents {
+      return Ok(true);
+    }
+  }
   let Some(expected) = crate::accounts::get_primary_income_employer_iban(conn)? else {
     return Ok(true);
   };
@@ -488,9 +513,26 @@ fn link_ledger_income_to_forecast(
   amount_cents: i64,
 ) -> AppResult<()> {
   let source_id = crate::income_actuals::income_forecast_source_id(forecast_id, occurrence_date);
+  if let Some(old_id) =
+    crate::income_actuals::ledger_id_for_occurrence(conn, forecast_id, occurrence_date)?
+  {
+    if old_id != ledger_id {
+      conn.execute("DELETE FROM ledger_transactions WHERE id = ?1", params![old_id])?;
+    }
+  }
+  let forecast_name: String = conn.query_row(
+    "SELECT name FROM income_forecasts WHERE id = ?1",
+    params![forecast_id],
+    |r| r.get(0),
+  )?;
+  let title = if forecast_name.trim().is_empty() {
+    "Einnahme (Ist)".into()
+  } else {
+    forecast_name
+  };
   conn.execute(
-    "UPDATE ledger_transactions SET source_id = ?2 WHERE id = ?1",
-    params![ledger_id, source_id],
+    "UPDATE ledger_transactions SET source_id = ?2, title = ?3 WHERE id = ?1",
+    params![ledger_id, source_id, title],
   )?;
   conn.execute(
     "INSERT INTO income_forecast_actuals (income_forecast_id, occurrence_date, amount_cents, ledger_transaction_id)
@@ -574,6 +616,63 @@ fn setup_primary_income_forecast(
   crate::accounts::set_primary_income_forecast_id(conn, Some(&forecast_id))?;
   crate::accounts::set_primary_income_anchor_date(conn, Some(&tx.date))?;
   Ok(forecast_id)
+}
+
+fn append_only_semantic_duplicate_exists(
+  conn: &rusqlite::Connection,
+  account_id: &str,
+  tx: &ParsedTransaction,
+) -> AppResult<bool> {
+  let count: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM ledger_transactions
+     WHERE COALESCE(source_id, '') LIKE 'bank_import:%'
+       AND date = ?2
+       AND amount_cents = ?3
+       AND LOWER(TRIM(title)) = LOWER(TRIM(?4))
+       AND (account_id = ?1 OR from_account_id = ?1 OR to_account_id = ?1)",
+    params![account_id, tx.date, tx.amount_cents, tx.title],
+    |r| r.get(0),
+  )?;
+  Ok(count > 0)
+}
+
+fn append_only_income_already_settled(
+  conn: &rusqlite::Connection,
+  account_id: &str,
+  tx: &ParsedTransaction,
+) -> AppResult<bool> {
+  if let Some((forecast_id, occurrence_date)) =
+    try_match_income_forecast(conn, account_id, tx.amount_cents, &tx.date)?
+  {
+    let linked: i64 = conn.query_row(
+      "SELECT COUNT(*) FROM income_forecast_actuals WHERE income_forecast_id = ?1 AND occurrence_date = ?2 AND ledger_transaction_id IS NOT NULL",
+      params![forecast_id, occurrence_date],
+      |r| r.get(0),
+    )?;
+    return Ok(linked > 0);
+  }
+  Ok(false)
+}
+
+fn append_only_transfer_duplicate_exists(
+  conn: &rusqlite::Connection,
+  date: &str,
+  amount_cents: i64,
+  from_account_id: &str,
+  to_account_id: &str,
+) -> AppResult<bool> {
+  let count: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM ledger_transactions
+     WHERE kind = 'transfer'
+       AND date = ?1
+       AND amount_cents = ?2
+       AND from_account_id = ?3
+       AND to_account_id = ?4
+       AND COALESCE(source_id, '') LIKE 'bank_import:%'",
+    params![date, amount_cents, from_account_id, to_account_id],
+    |r| r.get(0),
+  )?;
+  Ok(count > 0)
 }
 
 fn import_bank_export_inner(
@@ -788,6 +887,19 @@ fn import_bank_export_inner(
           }
         }
       }
+      skipped_count += 1;
+      continue;
+    }
+
+    if append_only && append_only_semantic_duplicate_exists(&conn, &account_id, tx)? {
+      skipped_count += 1;
+      continue;
+    }
+
+    if append_only
+      && tx.amount_cents > 0
+      && append_only_income_already_settled(&conn, &account_id, tx)?
+    {
       skipped_count += 1;
       continue;
     }
@@ -1148,6 +1260,26 @@ fn try_pair_bank_transfer(
     &to_account_id,
     &suffix,
   );
+
+  if append_only_transfer_duplicate_exists(
+    conn,
+    &tx.date,
+    amount,
+    &from_account_id,
+    &to_account_id,
+  )? {
+    let existing: Option<String> = conn
+      .query_row(
+        "SELECT source_id FROM ledger_transactions
+         WHERE kind = 'transfer' AND date = ?1 AND amount_cents = ?2
+           AND from_account_id = ?3 AND to_account_id = ?4
+           AND COALESCE(source_id, '') LIKE 'bank_import:%' LIMIT 1",
+        params![tx.date, amount, from_account_id, to_account_id],
+        |r| r.get(0),
+      )
+      .optional()?;
+    return Ok(existing);
+  }
 
   if let Some(matched_id) = matched_id {
     delete_ledger_for_transfer_pair(conn, &matched_id)?;

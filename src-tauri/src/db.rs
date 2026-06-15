@@ -313,7 +313,102 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   migrate_buy_item_groups(conn)?;
   migrate_buy_item_group_ledger(conn)?;
   migrate_ledger_buy_group_splits(conn)?;
+  migrate_budget_pools(conn)?;
+  migrate_budget_pools_v2(conn)?;
+  migrate_budget_pools_v3(conn)?;
 
+  Ok(())
+}
+
+fn migrate_budget_pools_v3(conn: &Connection) -> AppResult<()> {
+  let done: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM app_settings WHERE key = 'budget_pools_v3'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap_or(0);
+  if done > 0 {
+    return Ok(());
+  }
+  try_add_column(conn, "budget_pools", "scalable_start_period_key", "TEXT")?;
+  conn.execute(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('budget_pools_v3', '1')",
+    [],
+  )?;
+  Ok(())
+}
+
+fn migrate_budget_pools(conn: &Connection) -> AppResult<()> {
+  let done: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM app_settings WHERE key = 'budget_pools_v1'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap_or(0);
+  if done > 0 {
+    return Ok(());
+  }
+  conn.execute_batch(
+    r#"
+    CREATE TABLE IF NOT EXISTS budget_pools (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      period_mode TEXT NOT NULL CHECK(period_mode IN ('salary_period', 'yearly')),
+      account_id TEXT,
+      icon TEXT NOT NULL DEFAULT 'piggy-bank',
+      color TEXT NOT NULL DEFAULT '#0ea5e9',
+      notes TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ledger_budget_pool_splits (
+      id TEXT PRIMARY KEY NOT NULL,
+      ledger_transaction_id TEXT NOT NULL,
+      budget_pool_id TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      period_key TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ledger_bps_ledger ON ledger_budget_pool_splits(ledger_transaction_id);
+    CREATE INDEX IF NOT EXISTS idx_ledger_bps_pool_period ON ledger_budget_pool_splits(budget_pool_id, period_key);
+    CREATE TABLE IF NOT EXISTS ledger_variable_cost_splits (
+      id TEXT PRIMARY KEY NOT NULL,
+      ledger_transaction_id TEXT NOT NULL,
+      variable_cost_id TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      month_key TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ledger_vcs_ledger ON ledger_variable_cost_splits(ledger_transaction_id);
+    CREATE INDEX IF NOT EXISTS idx_ledger_vcs_vc_month ON ledger_variable_cost_splits(variable_cost_id, month_key);
+    "#,
+  )?;
+  conn.execute(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('budget_pools_v1', '1')",
+    [],
+  )?;
+  Ok(())
+}
+
+fn migrate_budget_pools_v2(conn: &Connection) -> AppResult<()> {
+  let done: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM app_settings WHERE key = 'budget_pools_v2'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap_or(0);
+  if done > 0 {
+    return Ok(());
+  }
+  try_add_column(conn, "budget_pools", "scalable", "INTEGER NOT NULL DEFAULT 0")?;
+  conn.execute(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('budget_pools_v2', '1')",
+    [],
+  )?;
   Ok(())
 }
 

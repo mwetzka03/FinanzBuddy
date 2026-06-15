@@ -14,3 +14,4 @@ pub mod ledger;
 pub(crate) mod prognostic;
 pub mod setup_cmd;
 pub mod variable_costs_cmd;
+pub mod budget_pools;

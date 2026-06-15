@@ -63,12 +63,12 @@ pub fn build_full_group_splits(
   tx_total_cents: i64,
 ) -> AppResult<Vec<BuyGroupSplitInput>> {
   let rows: Vec<(String, i64)> = conn
-    .prepare("SELECT id, amount_cents FROM buy_items WHERE group_id = ?1 AND status = 'parked'")?
+    .prepare("SELECT id, amount_cents FROM buy_items WHERE group_id = ?1 AND status IN ('parked', 'applied')")?
     .query_map(params![group_id], |r| Ok((r.get(0)?, r.get(1)?)))?
     .collect::<Result<Vec<_>, _>>()?;
   if rows.is_empty() {
     return Err(AppError::Invalid(
-      "Gruppierung hat keine offenen Einträge mehr".into(),
+      "Gruppierung hat keine Einträge".into(),
     ));
   }
   let sum: i64 = rows.iter().map(|(_, cents)| *cents).sum();
@@ -248,31 +248,5 @@ pub fn clear_buy_group_assignment_for_transaction(conn: &Connection, tx_id: &str
     "UPDATE ledger_transactions SET buy_item_group_id = NULL WHERE id = ?1",
     params![tx_id],
   )?;
-  Ok(())
-}
-
-pub fn revert_buy_group(conn: &Connection, group_id: &str) -> AppResult<()> {
-  let ledger_ids: Vec<String> = conn
-    .prepare("SELECT DISTINCT ledger_transaction_id FROM ledger_buy_group_splits WHERE buy_item_id IN (SELECT id FROM buy_items WHERE group_id = ?1)")?
-    .query_map(params![group_id], |r| r.get(0))?
-    .collect::<Result<Vec<_>, _>>()?;
-  for ledger_id in ledger_ids {
-    revert_splits_for_ledger(conn, &ledger_id)?;
-    conn.execute(
-      "UPDATE ledger_transactions SET buy_item_group_id = NULL WHERE id = ?1",
-      params![ledger_id],
-    )?;
-  }
-  conn.execute(
-    "UPDATE ledger_transactions SET buy_item_group_id = NULL WHERE buy_item_group_id = ?1",
-    params![group_id],
-  )?;
-  let member_ids: Vec<String> = conn
-    .prepare("SELECT id FROM buy_items WHERE group_id = ?1")?
-    .query_map(params![group_id], |r| r.get(0))?
-    .collect::<Result<Vec<_>, _>>()?;
-  for item_id in member_ids {
-    revert_buy_item(conn, &item_id)?;
-  }
   Ok(())
 }

@@ -63,7 +63,7 @@ pub fn effective_income_amount(
   }
 }
 
-fn ledger_id_for_occurrence(
+pub fn ledger_id_for_occurrence(
   conn: &rusqlite::Connection,
   forecast_id: &str,
   occurrence_date: &str,

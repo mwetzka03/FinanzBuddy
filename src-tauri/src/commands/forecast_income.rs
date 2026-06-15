@@ -11,6 +11,39 @@ use rusqlite::{params, OptionalExtension};
 use uuid::Uuid;
 
 use super::dashboard_events::primary_employer_ledger_exists_near_date;
+use crate::dashboard_period::day_before;
+
+fn primary_income_bank_import_exists(
+  conn: &rusqlite::Connection,
+  account_id: &str,
+  occurrence_date: &str,
+  amount_cents: i64,
+) -> AppResult<bool> {
+  let month_end = if occurrence_date.len() >= 7 {
+    let year: i32 = occurrence_date[..4].parse().unwrap_or(0);
+    let month: u32 = occurrence_date[5..7].parse().unwrap_or(0);
+    if month == 12 {
+      format!("{}-12-31", year)
+    } else {
+      format!("{}-{:02}-31", year, month + 1)
+    }
+  } else {
+    occurrence_date.to_string()
+  };
+  let window_start = day_before(occurrence_date).unwrap_or_else(|_| occurrence_date.to_string());
+  let count: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM ledger_transactions
+     WHERE kind = 'income'
+       AND account_id = ?1
+       AND amount_cents = ?2
+       AND date >= ?3
+       AND date <= ?4
+       AND COALESCE(source_id, '') LIKE 'bank_import:%'",
+    params![account_id, amount_cents, window_start, month_end],
+    |r| r.get(0),
+  )?;
+  Ok(count > 0)
+}
 
 pub(crate) fn income_occurrence_booked(conn: &rusqlite::Connection, forecast_id: &str, occurrence_date: &str) -> AppResult<bool> {
   if actual_amount_for_occurrence(conn, forecast_id, occurrence_date)?.is_some() {
@@ -43,6 +76,16 @@ pub(crate) fn income_occurrence_booked(conn: &rusqlite::Connection, forecast_id:
     && primary_employer_ledger_exists_near_date(conn, occurrence_date)?
   {
     return Ok(true);
+  }
+  if crate::accounts::get_primary_income_forecast_id(conn)?.as_deref() == Some(forecast_id) {
+    let (forecast_amount, account_id): (i64, String) = conn.query_row(
+      "SELECT amount_cents, COALESCE(account_id, ?1) FROM income_forecasts WHERE id = ?2",
+      params![crate::accounts::get_main_account_id(conn)?, forecast_id],
+      |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    if primary_income_bank_import_exists(conn, &account_id, occurrence_date, forecast_amount)? {
+      return Ok(true);
+    }
   }
   let legacy: i64 = conn.query_row(
     "SELECT COUNT(*) FROM ledger_transactions WHERE source_id = ?1 AND date = ?2",

@@ -250,21 +250,77 @@ fn update_buy_item_group_inner(state: State<'_, AppState>, input: UpdateBuyItemG
     params![input.id, input.name, input.description, input.planned_month, icon, color],
   )?;
   if let Some(item_ids) = input.item_ids {
-    conn.execute("UPDATE buy_items SET group_id = NULL WHERE group_id = ?1", params![input.id])?;
-    assign_items_to_group(&conn, &input.id, &item_ids)?;
+    sync_buy_item_group_members(&conn, &input.id, &item_ids)?;
+  }
+  Ok(())
+}
+
+fn sync_buy_item_group_members(
+  conn: &rusqlite::Connection,
+  group_id: &str,
+  item_ids: &[String],
+) -> AppResult<()> {
+  let wanted: std::collections::HashSet<String> = item_ids.iter().cloned().collect();
+  let current: Vec<(String, String)> = conn
+    .prepare("SELECT id, status FROM buy_items WHERE group_id = ?1")?
+    .query_map(params![group_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+    .collect::<Result<Vec<_>, _>>()?;
+
+  for (item_id, status) in current {
+    if !wanted.contains(&item_id) && status == "parked" {
+      conn.execute(
+        "UPDATE buy_items SET group_id = NULL WHERE id = ?1 AND status = 'parked'",
+        params![item_id],
+      )?;
+    }
+  }
+
+  for item_id in item_ids {
+    assign_item_to_group(conn, group_id, item_id)?;
+  }
+  Ok(())
+}
+
+fn assign_item_to_group(conn: &rusqlite::Connection, group_id: &str, item_id: &str) -> AppResult<()> {
+  let (status, current_group): (String, Option<String>) = conn
+    .query_row(
+      "SELECT status, group_id FROM buy_items WHERE id = ?1",
+      params![item_id],
+      |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .map_err(|_| AppError::Invalid(format!("item {item_id} not found")))?;
+
+  if current_group.as_deref() == Some(group_id) {
+    return Ok(());
+  }
+
+  if current_group.is_some() {
+    return Err(AppError::Invalid(format!(
+      "item {item_id} belongs to another group"
+    )));
+  }
+
+  if status == "applied" {
+    conn.execute(
+      "UPDATE buy_items SET group_id = ?1 WHERE id = ?2",
+      params![group_id, item_id],
+    )?;
+    return Ok(());
+  }
+
+  let updated = conn.execute(
+    "UPDATE buy_items SET group_id = ?1 WHERE id = ?2 AND status = 'parked'",
+    params![group_id, item_id],
+  )?;
+  if updated == 0 {
+    return Err(AppError::Invalid(format!("item {item_id} not found or already booked")));
   }
   Ok(())
 }
 
 fn assign_items_to_group(conn: &rusqlite::Connection, group_id: &str, item_ids: &[String]) -> AppResult<()> {
   for item_id in item_ids {
-    let updated = conn.execute(
-      "UPDATE buy_items SET group_id = ?1 WHERE id = ?2 AND status = 'parked'",
-      params![group_id, item_id],
-    )?;
-    if updated == 0 {
-      return Err(AppError::Invalid(format!("item {item_id} not found or already booked")));
-    }
+    assign_item_to_group(conn, group_id, item_id)?;
   }
   Ok(())
 }

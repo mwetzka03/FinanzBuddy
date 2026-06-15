@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { useUi } from '../../lib/ui';
+import { ErrorAlertDialog } from '../common/ErrorAlertDialog';
 
 type PageShellProps = {
   title: string;
   intro?: ReactNode;
   error?: string | null;
+  onErrorDismiss?: () => void;
   backTo?: string;
   backLabel?: string;
   narrow?: boolean;
@@ -15,9 +18,23 @@ type PageShellProps = {
   children: ReactNode;
 };
 
-export function PageShell({ title, intro, error, backTo, backLabel, narrow, headerBefore, headerActions, children }: PageShellProps) {
+export function PageShell({
+  title,
+  intro,
+  error,
+  onErrorDismiss,
+  backTo,
+  backLabel,
+  narrow,
+  headerBefore,
+  headerActions,
+  children,
+}: PageShellProps) {
   const ui = useUi();
   const { t } = useLocale();
+  const [dismissed, setDismissed] = useState('');
+
+  const showError = !!error && error !== dismissed;
 
   return (
     <section style={narrow ? ui.pageNarrow : ui.page} className="fh-page">
@@ -34,12 +51,15 @@ export function PageShell({ title, intro, error, backTo, backLabel, narrow, head
         </div>
         {headerActions ? <div className="fh-page-header-actions">{headerActions}</div> : null}
       </header>
-      {error && (
-        <div style={ui.errorBox} role="alert" className="fh-alert">
-          {error}
-        </div>
-      )}
       {children}
+      <ErrorAlertDialog
+        open={showError}
+        message={error ?? ''}
+        onClose={() => {
+          setDismissed(error ?? '');
+          onErrorDismiss?.();
+        }}
+      />
     </section>
   );
 }

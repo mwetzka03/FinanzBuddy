@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
   Account,
+  BudgetPool,
   BuyItem,
   BuyItemGroup,
   Cadence,
@@ -21,6 +22,7 @@ import { OptionalDescriptionInput } from '../OptionalDescriptionInput';
 import {
   ExpenseCategoryField,
   expenseCategoryFromLedger,
+  expenseCategoryTypeFromValue,
   ledgerCategoryIds,
   type ExpenseCategoryValue,
 } from './ExpenseCategoryField';
@@ -38,10 +40,14 @@ import {
   linkLedgerToIncomeForecast,
   listIncomeForecastOccurrences,
   listLedgerBuyGroupSplits,
+  listLedgerExpenseSplits,
   updateLedgerTransaction,
   updateTransfer,
 } from '../../tauri/api';
 import { BuyGroupSplitModal, type BuyGroupSplitDraft } from './BuyGroupSplitModal';
+import { VariableCostSplitModal, type VariableCostSplitDraft } from './VariableCostSplitModal';
+import { BudgetPoolSplitModal, type BudgetPoolSplitDraft } from './BudgetPoolSplitModal';
+import { BudgetPoolHistoryModal } from '../budgetPools/BudgetPoolHistoryModal';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { DEFAULT_KIND_COLOR, DEFAULT_KIND_ICON } from '../../lib/icons';
 import { useUi } from '../../lib/ui';
@@ -85,6 +91,7 @@ export function TransactionEntryModal({
   accountId,
   accounts,
   variableCosts,
+  budgetPools = [],
   fixedCosts,
   buyItems,
   buyItemGroups = [],
@@ -98,6 +105,7 @@ export function TransactionEntryModal({
   accountId: string;
   accounts: Account[];
   variableCosts: VariableCost[];
+  budgetPools?: BudgetPool[];
   fixedCosts: FixedCost[];
   buyItems: BuyItem[];
   buyItemGroups?: BuyItemGroup[];
@@ -144,7 +152,12 @@ export function TransactionEntryModal({
   const [linkOccurrenceDate, setLinkOccurrenceDate] = useState<IsoDate | ''>('');
   const [linkOccurrences, setLinkOccurrences] = useState<IsoDate[]>([]);
   const [splitModalOpen, setSplitModalOpen] = useState(false);
+  const [variableCostSplitModalOpen, setVariableCostSplitModalOpen] = useState(false);
+  const [budgetPoolSplitModalOpen, setBudgetPoolSplitModalOpen] = useState(false);
+  const [budgetPoolHistory, setBudgetPoolHistory] = useState<BudgetPool | null>(null);
   const [existingBuyGroupSplits, setExistingBuyGroupSplits] = useState<BuyGroupSplitDraft[]>([]);
+  const [variableCostSplitDraft, setVariableCostSplitDraft] = useState<VariableCostSplitDraft[]>([]);
+  const [budgetPoolSplitDraft, setBudgetPoolSplitDraft] = useState<BudgetPoolSplitDraft[]>([]);
 
   const editableIncomeForecasts = useMemo(
     () =>
@@ -184,6 +197,8 @@ export function TransactionEntryModal({
       return;
     }
 
+    setVariableCostSplitDraft([]);
+    setBudgetPoolSplitDraft([]);
     setEntryType('expense');
     setDate(today);
     setAmount('');
@@ -222,6 +237,28 @@ export function TransactionEntryModal({
       )
       .catch(() => setExistingBuyGroupSplits([]));
   }, [open, row?.id, row?.buyItemGroupId]);
+
+  useEffect(() => {
+    if (!open || !row?.id) {
+      setVariableCostSplitDraft([]);
+      setBudgetPoolSplitDraft([]);
+      return;
+    }
+    listLedgerExpenseSplits(row.id)
+      .then((splits) => {
+        setVariableCostSplitDraft(splits.variableCostSplits);
+        setBudgetPoolSplitDraft(splits.budgetPoolSplits);
+        if (splits.variableCostSplits.length > 0) {
+          setExpenseCategory((current) =>
+            current.kind === 'variable' ? { kind: 'none', id: null } : current,
+          );
+        }
+      })
+      .catch(() => {
+        setVariableCostSplitDraft([]);
+        setBudgetPoolSplitDraft([]);
+      });
+  }, [open, row?.id]);
 
   useEffect(() => {
     if (!open || !linkForecastId) {
@@ -320,6 +357,48 @@ export function TransactionEntryModal({
     };
   }
 
+  function buildBudgetPoolSplitsPayload(): BudgetPoolSplitDraft[] | null {
+    if (budgetPoolSplitDraft.length > 0) return budgetPoolSplitDraft;
+    return null;
+  }
+
+  function buildLedgerAssignmentPayload() {
+    const txAmountCents = Math.abs(parseEurToCents(amount || '0'));
+    const categoryPayload = ledgerCategoryIds(expenseCategory);
+    const hasVariableSplit = variableCostSplitDraft.length > 0;
+    return {
+      ...(hasVariableSplit
+        ? {
+            variableCostId: null,
+            fixedCostId: null,
+            buyItemId: null,
+            buyItemGroupId: null,
+          }
+        : categoryPayload),
+      variableCostSplits: hasVariableSplit ? variableCostSplitDraft : null,
+      budgetPoolSplits: buildBudgetPoolSplitsPayload(),
+    };
+  }
+
+  function hasVariableCostSplitDraft(): boolean {
+    return variableCostSplitDraft.length > 0;
+  }
+
+  function hasBudgetPoolSplitDraft(): boolean {
+    return budgetPoolSplitDraft.length > 0;
+  }
+
+  function variableCostSplitSummary(): string {
+    return t('transactions.variableCostSplitSummary', { count: String(variableCostSplitDraft.length) });
+  }
+
+  function budgetPoolSplitSummary(): string {
+    if (hasBudgetPoolSplitDraft()) {
+      return t('transactions.budgetPoolSplitSummaryCount', { count: String(budgetPoolSplitDraft.length) });
+    }
+    return t('transactions.budgetPoolSplitSummary');
+  }
+
   function needsBuyGroupSplit(): boolean {
     if (expenseCategory.kind !== 'buyGroup' || !expenseCategory.id) return false;
     if (isEdit && row) {
@@ -392,9 +471,7 @@ export function TransactionEntryModal({
           } else {
             amountCents = row.amountCents;
           }
-          const categoryPayload = ledgerCategoryIds(
-            canAssignCategory(finalKind) ? expenseCategory : { kind: 'none', id: null },
-          );
+          const assignmentPayload = buildLedgerAssignmentPayload();
           await updateLedgerTransaction({
             id: row.id,
             date,
@@ -402,7 +479,7 @@ export function TransactionEntryModal({
             kind: finalKind,
             title: title.trim() || kindLabel(finalKind, t),
             notes: description.trim() ? description : null,
-            ...categoryPayload,
+            ...assignmentPayload,
             ...(buyGroupSplits ? buyGroupSplitPayload(buyGroupSplits) : {}),
             ...fixedCostAssignmentOptions(),
             icon,
@@ -476,9 +553,7 @@ export function TransactionEntryModal({
       } else if (isLedgerCreateType(entryType)) {
         const ledgerAccount = fromAccountId || accountId || mainAccountId;
         if (!amount.trim() || !ledgerAccount) return;
-        const categoryPayload = ledgerCategoryIds(
-          canAssignCategory(entryType) ? expenseCategory : { kind: 'none', id: null },
-        );
+        const assignmentPayload = buildLedgerAssignmentPayload();
         await createLedgerTransaction({
           date,
           amountCents: amountCentsForKind(entryType, parseEurToCents(amount)),
@@ -486,7 +561,7 @@ export function TransactionEntryModal({
           kind: entryType,
           title: title.trim() ? title : kindLabel(entryType, t),
           notes: description.trim() ? description : null,
-          ...categoryPayload,
+          ...assignmentPayload,
           ...(buyGroupSplits ? buyGroupSplitPayload(buyGroupSplits) : {}),
           ...fixedCostAssignmentOptions(),
           icon,
@@ -836,8 +911,8 @@ export function TransactionEntryModal({
               </label>
             </div>
             {canAssignCategory(entryType as string) ? (
-              <div className="fh-form-row fh-form-row--category">
-                <label className="fh-form-row-grow">
+              <>
+                <label>
                   {t('common.category')}
                   <ExpenseCategoryField
                     variableCosts={variableCosts}
@@ -845,8 +920,34 @@ export function TransactionEntryModal({
                     buyItems={buyItems}
                     buyItemGroups={buyItemGroups}
                     value={expenseCategory}
-                    onChange={setExpenseCategory}
+                    onChange={(value) => {
+                      setExpenseCategory(value);
+                      if (value.kind !== 'none' && value.kind !== 'variable') {
+                        setVariableCostSplitDraft([]);
+                      }
+                    }}
+                    disabled={hasVariableCostSplitDraft()}
+                    inputActions={
+                      expenseCategoryTypeFromValue(expenseCategory) === 'variable' || hasVariableCostSplitDraft() ? (
+                        <button
+                          type="button"
+                          className="fh-btn ghost"
+                          onClick={() => setVariableCostSplitModalOpen(true)}
+                          disabled={!amount.trim()}
+                        >
+                          {t('transactions.variableCostSplitAction')}
+                        </button>
+                      ) : null
+                    }
                   />
+                  {hasVariableCostSplitDraft() ? (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, color: ui.colors.textMuted }}>{variableCostSplitSummary()}</span>
+                      <button type="button" className="fh-btn ghost" onClick={() => setVariableCostSplitDraft([])}>
+                        {t('transactions.variableCostSplitClear')}
+                      </button>
+                    </div>
+                  ) : null}
                 </label>
                 {expenseCategory.kind === 'fixed' && expenseCategory.id ? (
                   <Checkbox
@@ -857,7 +958,30 @@ export function TransactionEntryModal({
                     {t('transactions.assignSimilarFixedCosts')}
                   </Checkbox>
                 ) : null}
-              </div>
+                <div className="fh-form-block">
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t('transactions.budgetPoolLabel')}</div>
+                  {hasBudgetPoolSplitDraft() ? (
+                    <div style={{ fontSize: 13, color: ui.colors.textMuted, marginBottom: 8 }}>
+                      {budgetPoolSplitSummary()}
+                    </div>
+                  ) : null}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {hasBudgetPoolSplitDraft() ? (
+                      <button type="button" className="fh-btn ghost" onClick={() => setBudgetPoolSplitDraft([])}>
+                        {t('transactions.budgetPoolSplitClear')}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="fh-btn ghost"
+                      onClick={() => setBudgetPoolSplitModalOpen(true)}
+                      disabled={!amount.trim()}
+                    >
+                      {t('transactions.budgetPoolAssignAction')}
+                    </button>
+                  </div>
+                </div>
+              </>
             ) : null}
             {showIncomeForecastLink ? (
               <>
@@ -937,6 +1061,38 @@ export function TransactionEntryModal({
           setSplitModalOpen(false);
           await performSave(splits);
         }}
+      />
+
+      <VariableCostSplitModal
+        open={variableCostSplitModalOpen}
+        variableCosts={variableCosts}
+        txAmountCents={Math.abs(parseEurToCents(amount || '0'))}
+        initialSplits={variableCostSplitDraft}
+        onClose={() => setVariableCostSplitModalOpen(false)}
+        onConfirm={(splits) => {
+          setVariableCostSplitModalOpen(false);
+          setVariableCostSplitDraft(splits);
+          setExpenseCategory({ kind: 'none', id: null });
+        }}
+      />
+
+      <BudgetPoolSplitModal
+        open={budgetPoolSplitModalOpen}
+        budgetPools={budgetPools.filter((pool) => pool.active)}
+        txAmountCents={Math.abs(parseEurToCents(amount || '0'))}
+        initialSplits={budgetPoolSplitDraft}
+        onClose={() => setBudgetPoolSplitModalOpen(false)}
+        onConfirm={(splits) => {
+          setBudgetPoolSplitModalOpen(false);
+          setBudgetPoolSplitDraft(splits);
+        }}
+        onPoolClick={setBudgetPoolHistory}
+      />
+
+      <BudgetPoolHistoryModal
+        open={budgetPoolHistory != null}
+        pool={budgetPoolHistory}
+        onClose={() => setBudgetPoolHistory(null)}
       />
     </Modal>
   );

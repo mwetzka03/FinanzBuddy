@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { CircleOff, Plus } from 'lucide-react';
 import type { BuyItem, BuyItemGroup, IsoMonth, LedgerTransaction } from '../lib/types';
 import { AddEntryButton } from '../components/common/AddEntryButton';
 import { Checkbox } from '../components/common/Checkbox';
@@ -34,12 +34,20 @@ import { MonthInput } from '../components/DateInput';
 import { EditIconButton } from '../components/EditIconButton';
 import { TrashIconButton } from '../components/TrashIconButton';
 import { OptionalDescriptionInput } from '../components/OptionalDescriptionInput';
+import { LinkifiedText } from '../components/common/LinkifiedText';
 
-const TABLE_COLS = '48px 48px minmax(200px, 2.5fr) 120px 120px 72px';
+const TABLE_COLS = '48px 48px minmax(200px, 2.5fr) 120px 120px 120px 72px';
 
 type ListRow =
   | { kind: 'item'; item: BuyItem }
-  | { kind: 'group'; group: BuyItemGroup; amountCents: number; allApplied: boolean; anyApplied: boolean };
+  | {
+      kind: 'group';
+      group: BuyItemGroup;
+      totalAmountCents: number;
+      openAmountCents: number;
+      allApplied: boolean;
+      anyApplied: boolean;
+    };
 
 export function BuyListPage() {
   const ui = useUi();
@@ -50,7 +58,7 @@ export function BuyListPage() {
   const [expenseOptions, setExpenseOptions] = useState<LedgerTransaction[]>([]);
   const [pendingApply, setPendingApply] = useState<{ kind: 'item' | 'group'; id: string } | null>(null);
   const [linkLedgerId, setLinkLedgerId] = useState('');
-  type BuySortKey = 'status' | 'name' | 'amount' | 'month';
+  type BuySortKey = 'status' | 'name' | 'totalAmount' | 'openAmount' | 'month';
   const [sort, setSort] = useState<SortState<BuySortKey>>(null);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -64,22 +72,27 @@ export function BuyListPage() {
     for (const group of groups) {
       const members = rows.filter((r) => r.groupId === group.id);
       if (members.length === 0) continue;
-      const parked = members.filter((m) => m.status === 'parked');
-      if (parked.length === 0 && members.every((m) => m.status === 'applied')) {
+      const totalAmountCents = members.reduce((sum, m) => sum + m.amountCents, 0);
+      const openAmountCents = members
+        .filter((m) => m.status === 'parked')
+        .reduce((sum, m) => sum + m.amountCents, 0);
+      if (openAmountCents === 0 && members.every((m) => m.status === 'applied')) {
         out.push({
           kind: 'group',
           group,
-          amountCents: members.reduce((sum, m) => sum + m.amountCents, 0),
+          totalAmountCents,
+          openAmountCents: 0,
           allApplied: true,
           anyApplied: true,
         });
         continue;
       }
-      if (parked.length === 0) continue;
+      if (openAmountCents === 0) continue;
       out.push({
         kind: 'group',
         group,
-        amountCents: parked.reduce((sum, m) => sum + m.amountCents, 0),
+        totalAmountCents,
+        openAmountCents,
         allApplied: false,
         anyApplied: members.some((m) => m.status === 'applied'),
       });
@@ -98,7 +111,8 @@ export function BuyListPage() {
           return r.item.status === 'applied' ? 1 : 0;
         },
         name: (r) => (r.kind === 'group' ? r.group.name : r.item.name),
-        amount: (r) => (r.kind === 'group' ? r.amountCents : r.item.amountCents),
+        totalAmount: (r) => (r.kind === 'group' ? r.totalAmountCents : r.item.amountCents),
+        openAmount: (r) => (r.kind === 'group' ? r.openAmountCents : r.item.amountCents),
         month: (r) =>
           r.kind === 'group' ? r.group.plannedMonth ?? '' : r.item.plannedMonth ?? '',
       }),
@@ -211,6 +225,7 @@ export function BuyListPage() {
       title={t('buyList.title')}
       intro={t('buyList.intro')}
       error={error}
+      onErrorDismiss={() => setError(null)}
       headerActions={
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <AddEntryButton label={t('buyList.newEntry')} onClick={openCreate} />
@@ -227,12 +242,22 @@ export function BuyListPage() {
             <SortableTh label="Real" sortKey="status" sort={sort} onSort={setSort} style={ui.thName} />
             <SortableTh label={t('common.name')} sortKey="name" sort={sort} onSort={setSort} style={ui.thName} />
             <SortableTh
-              label={t('common.amount')}
-              sortKey="amount"
+              label={t('buyList.totalAmount')}
+              sortKey="totalAmount"
               sort={sort}
               onSort={setSort}
               style={ui.thAmount}
               align="center"
+              amountCol="cost"
+            />
+            <SortableTh
+              label={t('buyList.openAmount')}
+              sortKey="openAmount"
+              sort={sort}
+              onSort={setSort}
+              style={ui.thAmount}
+              align="center"
+              amountCol="cost"
             />
             <SortableTh label={t('common.month')} sortKey="month" sort={sort} onSort={setSort} style={ui.thMono} />
             <div />
@@ -249,7 +274,7 @@ export function BuyListPage() {
           ) : (
             pagination.pageItems.map((r) => {
               if (r.kind === 'group') {
-                const { group, amountCents, allApplied } = r;
+                const { group, totalAmountCents, openAmountCents, allApplied } = r;
                 return (
                   <div
                     key={`group-${group.id}`}
@@ -278,10 +303,13 @@ export function BuyListPage() {
                       >
                         {group.name}
                       </button>
-                      {group.description ? <div style={ui.cellSub}>{group.description}</div> : null}
+                      {group.description ? <div style={ui.cellSub}><LinkifiedText text={group.description} /></div> : null}
                     </div>
-                    <TdAmount col="cost" amountCents={-amountCents}>
-                      {formatExpenseEurFromCents(amountCents)}
+                    <TdAmount col="cost" amountCents={-totalAmountCents}>
+                      {formatExpenseEurFromCents(totalAmountCents)}
+                    </TdAmount>
+                    <TdAmount col="cost" amountCents={-openAmountCents}>
+                      {formatExpenseEurFromCents(openAmountCents)}
                     </TdAmount>
                     <div style={ui.tdMono}>
                       {group.plannedMonth ? formatDisplayMonth(group.plannedMonth) : t('buyList.indefinitePeriod')}
@@ -308,11 +336,14 @@ export function BuyListPage() {
                   </div>
                   <div style={{ ...ui.cellStack, ...ui.tdName }}>
                     <div style={{ fontWeight: 600 }}>{item.name}</div>
-                    {item.description ? <div style={ui.cellSub}>{item.description}</div> : null}
+                    {item.description ? <div style={ui.cellSub}><LinkifiedText text={item.description} /></div> : null}
                     {item.status === 'applied' && item.appliedDate ? (
                       <div style={ui.cellSub}>{t('buyList.bookedOn', { date: formatDisplayDate(item.appliedDate) })}</div>
                     ) : null}
                   </div>
+                  <TdAmount col="cost" amountCents={-item.amountCents}>
+                    {formatExpenseEurFromCents(item.amountCents)}
+                  </TdAmount>
                   <TdAmount col="cost" amountCents={-item.amountCents}>
                     {formatExpenseEurFromCents(item.amountCents)}
                   </TdAmount>
@@ -364,7 +395,7 @@ export function BuyListPage() {
           open={!!activeGroup}
           group={activeGroup}
           members={activeGroupMembers}
-          unassignedItems={rows.filter((r) => !r.groupId && r.status === 'parked')}
+          unassignedItems={rows.filter((r) => !r.groupId)}
           onClose={() => setGroupDetailId(null)}
           onRefresh={refresh}
           onError={setError}
@@ -560,12 +591,12 @@ function BuyItemGroupModal({
 
   const availableItems = useMemo(() => {
     const assignedElsewhere = new Set(
-      rows.filter((r) => r.groupId && r.groupId !== groupId && r.status === 'parked').map((r) => r.id),
+      rows.filter((r) => r.groupId && r.groupId !== groupId).map((r) => r.id),
     );
     const currentMembers = groupId ? rows.filter((r) => r.groupId === groupId).map((r) => r.id) : [];
     return rows.filter(
       (r) =>
-        r.status === 'parked' &&
+        !r.groupId &&
         !assignedElsewhere.has(r.id) &&
         !selectedItemIds.includes(r.id) &&
         !currentMembers.includes(r.id),
@@ -650,10 +681,11 @@ function BuyItemGroupModal({
           {t('common.color')}
           <ColorPicker value={color} onChange={setColor} />
         </label>
-        <div>
+        <div className="fh-form-block">
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t('buyList.addExistingEntry')}</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <label style={{ flex: 1 }}>
+          <div className="fh-form-row fh-form-row--align-end">
+            <label className="fh-form-row-grow">
+              {t('buyList.addMember')}
               <select value={pickerItemId} onChange={(e) => setPickerItemId(e.target.value)}>
                 <option value="">–</option>
                 {availableItems.map((item) => (
@@ -663,7 +695,7 @@ function BuyItemGroupModal({
                 ))}
               </select>
             </label>
-            <button type="button" className="fh-btn ghost" onClick={addSelectedItem} disabled={!pickerItemId} title={t('buyList.addMember')}>
+            <button type="button" className="fh-btn ghost fh-btn--icon" onClick={addSelectedItem} disabled={!pickerItemId} title={t('buyList.addMember')}>
               <Plus size={18} aria-hidden />
             </button>
           </div>
@@ -825,7 +857,7 @@ function BuyItemGroupDetailModal({
                 key={member.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '48px 1fr 120px auto',
+                  gridTemplateColumns: '48px 1fr 120px 104px',
                   gap: 8,
                   alignItems: 'center',
                   padding: '8px 10px',
@@ -843,22 +875,22 @@ function BuyItemGroupDetailModal({
                 </div>
                 <div>
                   <div style={{ fontWeight: 600 }}>{member.name}</div>
-                  {member.description ? <div style={ui.cellSub}>{member.description}</div> : null}
+                  {member.description ? <div style={ui.cellSub}><LinkifiedText text={member.description} /></div> : null}
                   {member.status === 'applied' && member.appliedDate ? (
                     <div style={ui.cellSub}>{t('buyList.bookedOn', { date: formatDisplayDate(member.appliedDate) })}</div>
                   ) : null}
                 </div>
                 <div style={{ textAlign: 'right' }}>{formatExpenseEurFromCents(member.amountCents)}</div>
-                <div style={{ display: 'flex', gap: 4 }}>
+                <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', minHeight: 32 }}>
                   {member.status === 'parked' ? (
                     <>
                       <EditIconButton label={t('common.edit')} onClick={() => setEditMember(member)} />
                       <TrashIconButton label={t('common.delete')} onClick={() => void deleteMember(member)} />
-                      <button type="button" className="fh-btn ghost" onClick={() => void removeMember(member)}>
-                        {t('buyList.removeFromGroup')}
-                      </button>
+                      <RemoveFromGroupIconButton label={t('buyList.removeFromGroup')} onClick={() => void removeMember(member)} />
                     </>
-                  ) : null}
+                  ) : (
+                    <span style={{ width: 1, height: 1, visibility: 'hidden' }} aria-hidden />
+                  )}
                 </div>
               </div>
             ))}
@@ -866,8 +898,8 @@ function BuyItemGroupDetailModal({
         )}
 
         {unassignedItems.length > 0 ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
-            <label style={{ flex: 1 }}>
+          <div className="fh-form-row fh-form-row--align-end" style={{ marginBottom: 12 }}>
+            <label className="fh-form-row-grow">
               {t('buyList.addMember')}
               <select value={addItemId} onChange={(e) => setAddItemId(e.target.value)}>
                 <option value="">–</option>
@@ -900,13 +932,60 @@ function BuyItemGroupDetailModal({
               <button type="button" className="fh-btn ghost" onClick={() => setEditMember(null)}>
                 {t('common.cancel')}
               </button>
-              <button type="button" className="fh-btn primary" onClick={() => void saveMember()}>
-                {t('common.save')}
-              </button>
+              <div className="fh-form-actions-right">
+                <button type="button" className="fh-btn primary" onClick={() => void saveMember()}>
+                  {t('common.save')}
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
       </div>
     </Modal>
+  );
+}
+
+function RemoveFromGroupIconButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  const { colors } = useUi();
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 32,
+        height: 32,
+        padding: 0,
+        flexShrink: 0,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 8,
+        background: colors.bgMuted,
+        color: colors.textMuted,
+        cursor: 'pointer',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.color = colors.accentDark;
+        e.currentTarget.style.borderColor = colors.accent;
+        e.currentTarget.style.background = colors.accentSoft;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = colors.textMuted;
+        e.currentTarget.style.borderColor = colors.border;
+        e.currentTarget.style.background = colors.bgMuted;
+      }}
+    >
+      <CircleOff size={16} aria-hidden="true" />
+    </button>
   );
 }

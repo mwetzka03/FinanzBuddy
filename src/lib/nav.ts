@@ -12,6 +12,7 @@ import {
   Tags,
   TrendingUp,
   Wallet,
+  Layers,
 } from 'lucide-react';
 
 export type NavItem = { to: string; labelKey: string; end?: boolean; icon?: LucideIcon };
@@ -35,6 +36,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/fixkosten', labelKey: 'nav.fixedCosts', icon: Repeat },
       { to: '/variable-kosten', labelKey: 'nav.variableCosts', icon: ListChecks },
+      { to: '/budgetpools', labelKey: 'nav.budgetPools', icon: Layers },
       { to: '/buy-liste', labelKey: 'nav.buyList', icon: ShoppingCart },
     ],
   },

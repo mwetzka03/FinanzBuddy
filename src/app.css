@@ -309,6 +309,17 @@ body {
   box-sizing: border-box;
 }
 
+.fh-table-pagination__trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.fh-table-pagination--with-search .fh-table-pagination__trailing {
+  margin-left: auto;
+}
+
 .fh-table-pagination::before,
 .fh-table-pagination::after {
   content: '';
@@ -372,6 +383,62 @@ body {
 .fh-table-pagination__btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.fh-table-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  max-width: 320px;
+  color: var(--fh-text-muted, #64748b);
+}
+
+.fh-table-search input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--fh-accent, #7c3aed) 22%, var(--fh-glass-border, rgba(255, 255, 255, 0.55)));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fh-bg-card, #fff) 82%, transparent);
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.fh-inline-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+}
+
+.fh-inline-loading .fh-loading-lottie,
+.fh-inline-loading > div {
+  width: 120px;
+  height: 120px;
+}
+
+.fh-inline-loading--compact {
+  padding: 24px 16px;
+}
+
+.fh-inline-loading--compact > div {
+  width: 72px;
+  height: 72px;
+}
+
+.fh-form-row--align-end {
+  align-items: flex-end;
+}
+
+.fh-btn--icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .fh-table-separator {

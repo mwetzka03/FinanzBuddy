@@ -36,6 +36,7 @@ export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
       let maxRight = -Infinity;
 
       tableEl.querySelectorAll<HTMLElement>('[data-amount-col]').forEach((cell) => {
+        if (cell.closest('.fh-table-head')) return;
         const rect = cell.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;
         minLeft = Math.min(minLeft, rect.left);
@@ -47,15 +48,9 @@ export function useAmountColumnBands(tableRef: RefObject<HTMLElement | null>) {
         return;
       }
 
-      const headCells = tableEl.querySelectorAll<HTMLElement>('.fh-table-head [data-amount-col]');
-      const topFromHead =
-        headCells.length > 0
-          ? Math.min(...Array.from(headCells).map((cell) => cell.getBoundingClientRect().top))
-          : firstRowRect.top;
-
       const left = Math.max(0, minLeft - tableRect.left);
       const right = Math.min(tableRect.width, maxRight - tableRect.left);
-      const top = Math.max(0, topFromHead - tableRect.top);
+      const top = Math.max(0, firstRowRect.top - tableRect.top);
 
       setBands([
         {

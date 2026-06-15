@@ -41,6 +41,7 @@ import { TransactionsPage } from './pages/TransactionsPage';
 import { VariableCostDetailPage } from './pages/VariableCostDetailPage';
 
 import { VariableCostsPage } from './pages/VariableCostsPage';
+import { BudgetPoolsPage } from './pages/BudgetPoolsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 
@@ -103,6 +104,8 @@ export function App() {
               <Route path="/variable-kosten" element={<VariableCostsPage />} />
 
               <Route path="/variable-kosten/:id" element={<VariableCostDetailPage />} />
+
+              <Route path="/budgetpools" element={<BudgetPoolsPage />} />
 
               <Route path="/buy-liste" element={<BuyListPage />} />
               <Route path="/einkaufszettel" element={<Navigate to="/buy-liste" replace />} />

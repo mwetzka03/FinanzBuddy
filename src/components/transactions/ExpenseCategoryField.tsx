@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { BuyItem, BuyItemGroup, FixedCost, VariableCost } from '../../lib/types';
 import { useLocale } from '../../i18n/LocaleProvider';
 import { useUi } from '../../lib/ui';
@@ -10,6 +10,15 @@ export type ExpenseCategoryValue = {
   id: string | null;
 };
 
+export type ExpenseCategoryType = 'none' | 'variable' | 'fixed' | 'buy';
+
+export function expenseCategoryTypeFromValue(value: ExpenseCategoryValue): ExpenseCategoryType {
+  if (value.kind === 'variable') return 'variable';
+  if (value.kind === 'fixed') return 'fixed';
+  if (value.kind === 'buy' || value.kind === 'buyGroup') return 'buy';
+  return 'none';
+}
+
 type ExpenseCategoryFieldProps = {
   variableCosts: VariableCost[];
   fixedCosts: FixedCost[];
@@ -18,6 +27,7 @@ type ExpenseCategoryFieldProps = {
   value: ExpenseCategoryValue;
   onChange: (value: ExpenseCategoryValue) => void;
   disabled?: boolean;
+  inputActions?: ReactNode;
 };
 
 export function expenseCategoryFromLedger(
@@ -62,10 +72,17 @@ export function ExpenseCategoryField({
   value,
   onChange,
   disabled,
+  inputActions,
 }: ExpenseCategoryFieldProps) {
   const { t } = useLocale();
   const ui = useUi();
+  const [categoryType, setCategoryType] = useState<ExpenseCategoryType>(() => expenseCategoryTypeFromValue(value));
   const [query, setQuery] = useState('');
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+
+  useEffect(() => {
+    setCategoryType(expenseCategoryTypeFromValue(value));
+  }, [value.kind, value.id]);
 
   const selectableBuyItems = useMemo(() => {
     const parked = buyItems.filter((b) => b.status === 'parked' && !b.groupId);
@@ -101,89 +118,140 @@ export function ExpenseCategoryField({
     return '';
   }, [value, variableCosts, fixedCosts, buyItems, buyItemGroups]);
 
+  useEffect(() => {
+    if (value.id) setQuery(selectedLabel);
+    else if (categoryType === 'none') setQuery('');
+  }, [value.id, selectedLabel, categoryType]);
+
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const variable = variableCosts
-      .filter((c) => !q || c.name.toLowerCase().includes(q))
-      .slice(0, 8)
-      .map((c) => ({ kind: 'variable' as const, id: c.id, label: c.name, group: t('transactions.categoryVariable') }));
-    const fixed = fixedCosts
-      .filter((c) => !q || c.name.toLowerCase().includes(q))
-      .slice(0, 8)
-      .map((c) => ({ kind: 'fixed' as const, id: c.id, label: c.name, group: t('transactions.categoryFixed') }));
-    const buy = selectableBuyItems
-      .filter((b) => !q || b.name.toLowerCase().includes(q))
-      .slice(0, 8)
-      .map((b) => ({ kind: 'buy' as const, id: b.id, label: b.name, group: t('transactions.categoryBuy') }));
-    const buyGroup = selectableBuyGroups
-      .filter((g) => !q || g.name.toLowerCase().includes(q))
-      .slice(0, 8)
-      .map((g) => ({
-        kind: 'buyGroup' as const,
-        id: g.id,
-        label: g.name,
-        group: t('transactions.categoryBuyGroup'),
-      }));
-    return [...variable, ...fixed, ...buy, ...buyGroup];
-  }, [variableCosts, fixedCosts, selectableBuyItems, selectableBuyGroups, query, t]);
+    if (categoryType === 'variable') {
+      return variableCosts
+        .filter((c) => !q || c.name.toLowerCase().includes(q))
+        .slice(0, 10)
+        .map((c) => ({ kind: 'variable' as const, id: c.id, label: c.name }));
+    }
+    if (categoryType === 'fixed') {
+      return fixedCosts
+        .filter((c) => !q || c.name.toLowerCase().includes(q))
+        .slice(0, 10)
+        .map((c) => ({ kind: 'fixed' as const, id: c.id, label: c.name }));
+    }
+    if (categoryType === 'buy') {
+      const items = selectableBuyItems
+        .filter((b) => !q || b.name.toLowerCase().includes(q))
+        .slice(0, 8)
+        .map((b) => ({
+          kind: 'buy' as const,
+          id: b.id,
+          label: b.name,
+          group: t('transactions.categoryBuy'),
+        }));
+      const groups = selectableBuyGroups
+        .filter((g) => !q || g.name.toLowerCase().includes(q))
+        .slice(0, 8)
+        .map((g) => ({
+          kind: 'buyGroup' as const,
+          id: g.id,
+          label: g.name,
+          group: t('transactions.categoryBuyGroup'),
+        }));
+      return [...items, ...groups];
+    }
+    return [];
+  }, [categoryType, variableCosts, fixedCosts, selectableBuyItems, selectableBuyGroups, query, t]);
+
+  function onCategoryTypeChange(next: ExpenseCategoryType) {
+    setCategoryType(next);
+    setQuery('');
+    onChange({ kind: 'none', id: null });
+  }
 
   function pick(kind: ExpenseCategoryKind, id: string, label: string) {
     if (kind === 'none') return;
     onChange({ kind, id });
     setQuery(label);
+    setSuggestionsOpen(false);
   }
 
-  function clear() {
+  function clearSelection() {
     onChange({ kind: 'none', id: null });
     setQuery('');
   }
 
+  const showSuggestions =
+    suggestionsOpen &&
+    query.trim().length > 0 &&
+    suggestions.length > 0 &&
+    !disabled &&
+    !(value.id && query.trim().toLowerCase() === selectedLabel.trim().toLowerCase());
+
   return (
-    <div style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input
-          value={query || selectedLabel}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (!e.target.value.trim()) {
-              onChange({ kind: 'none', id: null });
-            }
-          }}
-          placeholder={t('transactions.categoryPlaceholder')}
-          disabled={disabled}
-          style={ui.input}
-          autoComplete="off"
-          className="fh-input"
-        />
-        {value.id ? (
-          <button type="button" style={ui.btn} onClick={clear} disabled={disabled}>
-            ×
-          </button>
-        ) : null}
-      </div>
-      {query.trim() && suggestions.length > 0 && !disabled ? (
-        <div style={ui.suggestPopover}>
-          {suggestions.map((item) => (
-            <button
-              key={`${item.kind}:${item.id}`}
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => pick(item.kind, item.id, item.label)}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '10px 12px',
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                fontSize: 14,
+    <div style={{ display: 'grid', gap: 8 }}>
+      <select
+        value={categoryType}
+        onChange={(e) => onCategoryTypeChange(e.target.value as ExpenseCategoryType)}
+        disabled={disabled}
+      >
+        <option value="none">{t('transactions.categoryType.none')}</option>
+        <option value="variable">{t('transactions.categoryType.variable')}</option>
+        <option value="fixed">{t('transactions.categoryType.fixed')}</option>
+        <option value="buy">{t('transactions.categoryType.buy')}</option>
+      </select>
+      {categoryType !== 'none' ? (
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setSuggestionsOpen(true);
+                if (!e.target.value.trim()) {
+                  onChange({ kind: 'none', id: null });
+                }
               }}
-            >
-              <span style={{ color: ui.colors.textMuted, fontSize: 12, display: 'block' }}>{item.group}</span>
-              {item.label}
-            </button>
-          ))}
+              onFocus={() => setSuggestionsOpen(true)}
+              onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
+              placeholder={t(`transactions.categorySearch.${categoryType}`)}
+              disabled={disabled}
+              style={ui.input}
+              autoComplete="off"
+              className="fh-input"
+            />
+            {value.id ? (
+              <button type="button" style={ui.btn} onClick={clearSelection} disabled={disabled}>
+                ×
+              </button>
+            ) : null}
+            {inputActions}
+          </div>
+          {showSuggestions ? (
+            <div style={ui.suggestPopover}>
+              {suggestions.map((item) => (
+                <button
+                  key={`${item.kind}:${item.id}`}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(item.kind, item.id, item.label)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '10px 12px',
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                  }}
+                >
+                  {'group' in item && item.group ? (
+                    <span style={{ color: ui.colors.textMuted, fontSize: 12, display: 'block' }}>{item.group}</span>
+                  ) : null}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

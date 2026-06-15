@@ -8,6 +8,10 @@ import type {
   BuyItem,
   BuyItemGroup,
   BuyGroupSplitInput,
+  BudgetPool,
+  BudgetPoolPeriodHistory,
+  BudgetPoolPeriodMode,
+  BudgetPoolSplitInput,
   Cadence,
   DayView,
   FixedCost,
@@ -22,11 +26,13 @@ import type {
   IsoDate,
   IsoMonth,
   LedgerTransaction,
+  LedgerExpenseSplits,
   MonthView,
   NewsArticle,
   StockNewsListResponse,
   VariableCost,
   VariableCostDetail,
+  VariableCostSplitInput,
   IncomeForecastDetail,
   StockPortfolioSummary,
   StockSuggestion,
@@ -126,6 +132,10 @@ export async function listLedgerBuyGroupSplits(ledgerId: string): Promise<BuyGro
   return await invoke('list_ledger_buy_group_splits', { ledgerId });
 }
 
+export async function listLedgerExpenseSplits(ledgerId: string): Promise<LedgerExpenseSplits> {
+  return await invoke('list_ledger_expense_splits', { ledgerId });
+}
+
 export async function createLedgerTransaction(input: {
   date: IsoDate;
   amountCents: number;
@@ -138,6 +148,8 @@ export async function createLedgerTransaction(input: {
   buyItemId?: string | null;
   buyItemGroupId?: string | null;
   buyGroupSplits?: BuyGroupSplitInput[] | null;
+  variableCostSplits?: VariableCostSplitInput[] | null;
+  budgetPoolSplits?: BudgetPoolSplitInput[] | null;
   icon?: string;
   color?: string;
   assignSimilarFixedCost?: boolean;
@@ -157,6 +169,8 @@ export async function updateLedgerTransaction(input: {
   buyItemId?: string | null;
   buyItemGroupId?: string | null;
   buyGroupSplits?: BuyGroupSplitInput[] | null;
+  variableCostSplits?: VariableCostSplitInput[] | null;
+  budgetPoolSplits?: BudgetPoolSplitInput[] | null;
   icon?: string;
   color?: string;
   assignSimilarFixedCost?: boolean;
@@ -458,6 +472,48 @@ export async function setVariableCostActual(input: {
 
 export async function deleteVariableCost(id: string): Promise<void> {
   await invoke('delete_variable_cost', { id });
+}
+
+export async function listBudgetPools(): Promise<BudgetPool[]> {
+  return await invoke('list_budget_pools');
+}
+
+export async function getBudgetPoolPeriodHistory(poolId: string): Promise<BudgetPoolPeriodHistory> {
+  return await invoke('get_budget_pool_period_history', { poolId });
+}
+
+export async function createBudgetPool(input: {
+  name: string;
+  amountCents: number;
+  periodMode: BudgetPoolPeriodMode;
+  notes: string | null;
+  icon?: string;
+  color?: string;
+  accountId?: string;
+  scalable?: boolean;
+  scalableStartPeriodKey?: string | null;
+}): Promise<string> {
+  return await invoke('create_budget_pool', { input });
+}
+
+export async function updateBudgetPool(input: {
+  id: string;
+  name: string;
+  amountCents: number;
+  periodMode: BudgetPoolPeriodMode;
+  notes: string | null;
+  active: boolean;
+  icon?: string;
+  color?: string;
+  accountId?: string;
+  scalable?: boolean;
+  scalableStartPeriodKey?: string | null;
+}): Promise<void> {
+  await invoke('update_budget_pool', { input });
+}
+
+export async function deleteBudgetPool(id: string): Promise<void> {
+  await invoke('delete_budget_pool', { id });
 }
 
 export async function listExpenseGroups(): Promise<ExpenseGroupSummary[]> {

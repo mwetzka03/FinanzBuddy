@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Account, AccountKontostandRow, DashboardPeriodNavItem, DayView, DebtSummary, IsoDate, IsoMonth, MonthView, TimelineEvent } from '../lib/types';
 
 import { AmountTable } from '../components/data/AmountTable';
-import { useTablePagination, TablePaginationBar } from '../components/data/tablePagination';
+import { useTablePagination, TablePaginationBar, useTableSearch } from '../components/data/tablePagination';
 import { SortableTh, sortByState, type SortState } from '../components/data/tableSort';
 
 import { ThAmount, TdAmount } from '../components/data/AmountCells';
@@ -45,6 +45,7 @@ import { useUi } from '../lib/ui';
 import { useLocale } from '../i18n/LocaleProvider';
 
 import { PageShell } from '../components/layout/PageShell';
+import { InlineLoading } from '../components/layout/InlineLoading';
 
 import { DateInput } from '../components/DateInput';
 
@@ -268,20 +269,34 @@ function EventsTable({
   const { t } = useLocale();
   type EventSortKey = 'date' | 'account' | 'title' | 'amount' | 'subtotal';
   const [sort, setSort] = useState<SortState<EventSortKey>>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const rows = useMemo(
     () => dashboardEventsWithRunningSubtotals(events, filter, accountFilter, isStockDepot),
     [events, filter, accountFilter, isStockDepot],
   );
+  const searchedRows = useTableSearch(rows, searchQuery, (row, query) => {
+    const ev = row.event;
+    const haystack = [
+      ev.title,
+      ev.notes ?? '',
+      ev.accountName ?? '',
+      formatDisplayDate(ev.date),
+      ev.type,
+    ]
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(query);
+  });
   const sortedRows = useMemo(
     () =>
-      sortByState(rows, sort, {
+      sortByState(searchedRows, sort, {
         date: (r) => r.event.date,
         account: (r) => r.event.accountName ?? '',
         title: (r) => r.event.title,
         amount: (r) => r.event.amountCents,
         subtotal: (r) => r.runningSubtotalCents,
       }),
-    [rows, sort],
+    [searchedRows, sort],
   );
   const pagination = useTablePagination(sortedRows);
   const tableCols = '110px 140px 1fr 120px 120px';
@@ -309,6 +324,9 @@ function EventsTable({
         totalItems={pagination.totalItems}
         pageSize={pagination.pageSize}
         onPageChange={pagination.setPage}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        searchPlaceholder={t('dashboard.searchPlaceholder')}
       />
 
       {sortedRows.length === 0 ? (
@@ -840,7 +858,7 @@ export function DashboardPage() {
 
   return (
 
-    <PageShell title={t('dashboard.title')} error={error}>
+    <PageShell title={t('dashboard.title')} error={error} onErrorDismiss={() => setError(null)}>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
 
@@ -941,7 +959,7 @@ export function DashboardPage() {
 
       {loading ? (
 
-        <div>{t('common.loading')}</div>
+        <InlineLoading />
 
       ) : mode === 'month' && data && comparison ? (
 

@@ -91,6 +91,62 @@ export interface BuyGroupSplitInput {
   amountCents: number;
 }
 
+export interface VariableCostSplitInput {
+  variableCostId: string;
+  amountCents: number;
+}
+
+export interface BudgetPoolSplitInput {
+  budgetPoolId: string;
+  amountCents: number;
+}
+
+export interface LedgerExpenseSplits {
+  variableCostSplits: VariableCostSplitInput[];
+  budgetPoolSplits: BudgetPoolSplitInput[];
+}
+
+export type BudgetPoolPeriodMode = 'salary_period' | 'yearly';
+
+export interface BudgetPool {
+  id: string;
+  name: string;
+  amountCents: number;
+  periodMode: BudgetPoolPeriodMode;
+  accountId: string;
+  icon: string;
+  color: string;
+  notes: string | null;
+  active: boolean;
+  scalable: boolean;
+  scalableStartPeriodKey: string | null;
+  createdAt: string;
+  periodKey: string;
+  carryOverCents: number;
+  plannedCents: number;
+  actualCents: number;
+  remainingCents: number;
+}
+
+export interface BudgetPoolPeriodHistoryRow {
+  periodKey: string;
+  periodLabel: string;
+  basePlannedCents: number;
+  carryOverCents: number;
+  plannedCents: number;
+  actualCents: number;
+  remainingCents: number;
+  isCurrent: boolean;
+}
+
+export interface BudgetPoolPeriodHistory {
+  poolId: string;
+  poolName: string;
+  periodMode: BudgetPoolPeriodMode;
+  scalable: boolean;
+  rows: BudgetPoolPeriodHistoryRow[];
+}
+
 export type IncomeForecastDueRule = 'calendar_day' | 'first_business_day' | 'last_business_day';
 
 export interface IncomeForecast {
