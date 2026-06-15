@@ -435,16 +435,35 @@ pub fn apply_variable_cost_splits(
     )));
   }
 
+  let mut title_parts: Vec<String> = Vec::new();
+  for split in variable_splits {
+    let name: String = conn.query_row(
+      "SELECT name FROM variable_costs WHERE id = ?1",
+      params![split.variable_cost_id],
+      |r| r.get(0),
+    )?;
+    let amount_label = format!("-{:.2} €", split.amount_cents as f64 / 100.0).replace('.', ",");
+    title_parts.push(format!("{} ({amount_label})", name));
+  }
+  let title = title_parts.join(" / ");
   let primary_vc = variable_splits.first().map(|s| s.variable_cost_id.as_str());
   conn.execute(
-    "UPDATE ledger_transactions SET variable_cost_id = ?2 WHERE id = ?1",
-    params![ledger_id, primary_vc],
+    "UPDATE ledger_transactions SET variable_cost_id = ?2, title = ?3 WHERE id = ?1",
+    params![ledger_id, primary_vc, title],
   )?;
   if let Some(vc_id) = primary_vc {
     let (icon, color) = crate::cost_assignment::variable_cost_style(conn, vc_id)?;
     conn.execute(
       "UPDATE ledger_transactions SET icon = ?2, color = ?3 WHERE id = ?1",
       params![ledger_id, icon, color],
+    )?;
+  }
+
+  for split in variable_splits {
+    crate::commands::forecast_variable::resync_variable_cost_months(
+      conn,
+      Some(split.variable_cost_id.as_str()),
+      Some(date.as_str()),
     )?;
   }
 

@@ -89,6 +89,8 @@ pub(crate) fn sum_remaining_fixed_costs_in_range(
         }
       } else if fixed_cost_occurrence_booked(conn, &id, d, &cadence)? {
         continue;
+      } else if super::fixed_costs::is_fixed_cost_occurrence_dismissed(conn, &id, d)? {
+        continue;
       }
       total += amount_cents;
     }
@@ -144,6 +146,8 @@ pub(crate) fn push_fixed_cost_events_for_range(
           continue;
         }
       } else if fixed_cost_occurrence_booked(conn, &id, d, &cadence)? {
+        continue;
+      } else if super::fixed_costs::is_fixed_cost_occurrence_dismissed(conn, &id, d)? {
         continue;
       }
       *total += amount_cents;

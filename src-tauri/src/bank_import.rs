@@ -382,6 +382,36 @@ fn tx_is_primary_employer_income(tx: &ParsedTransaction, plan: &PrimaryIncomePla
   tx.amount_cents > 0 && tx_matches_employer_iban(tx, &plan.employer_iban)
 }
 
+fn primary_income_tx_matches(
+  conn: &rusqlite::Connection,
+  account_id: &str,
+  tx: &ParsedTransaction,
+) -> AppResult<bool> {
+  if tx.amount_cents <= 0 {
+    return Ok(false);
+  }
+  let Some(primary_id) = crate::accounts::get_primary_income_forecast_id(conn)? else {
+    return Ok(false);
+  };
+  let (forecast_amount, forecast_account): (i64, String) = conn.query_row(
+    "SELECT amount_cents, COALESCE(account_id, ?1) FROM income_forecasts WHERE id = ?2 AND COALESCE(active, 1) = 1",
+    params![account_id, primary_id],
+    |r| Ok((r.get(0)?, r.get(1)?)),
+  )?;
+  if forecast_account != account_id {
+    return Ok(false);
+  }
+  if forecast_amount == tx.amount_cents {
+    return Ok(true);
+  }
+  if let Some(expected) = crate::accounts::get_primary_income_employer_iban(conn)? {
+    if let Some(actual) = resolve_counterparty_iban(tx) {
+      return Ok(actual == expected);
+    }
+  }
+  Ok(false)
+}
+
 fn resolve_counterparty_iban(tx: &ParsedTransaction) -> Option<String> {
   tx.counterparty_iban
     .as_deref()
@@ -641,6 +671,20 @@ fn append_only_income_already_settled(
   account_id: &str,
   tx: &ParsedTransaction,
 ) -> AppResult<bool> {
+  if primary_income_tx_matches(conn, account_id, tx)? {
+    if let Some(primary_id) = crate::accounts::get_primary_income_forecast_id(conn)? {
+      let occurrence = crate::dashboard_period::primary_income_occurrence_for_date(conn, &tx.date)?
+        .unwrap_or_else(|| tx.date.clone());
+      let linked: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM income_forecast_actuals WHERE income_forecast_id = ?1 AND occurrence_date = ?2 AND ledger_transaction_id IS NOT NULL",
+        params![primary_id, occurrence],
+        |r| r.get(0),
+      )?;
+      if linked > 0 {
+        return Ok(true);
+      }
+    }
+  }
   if let Some((forecast_id, occurrence_date)) =
     try_match_income_forecast(conn, account_id, tx.amount_cents, &tx.date)?
   {
@@ -839,8 +883,28 @@ fn import_bank_export_inner(
       let kind = if tx.amount_cents >= 0 { "income" } else { "expense" };
       let icon = if kind == "income" { "banknote" } else { "shop" };
       let color = if kind == "income" { "#22c55e" } else { "#ef4444" };
+      let mut fc_icon = icon.to_string();
+      let mut fc_color = color.to_string();
+      let fixed_cost_id = if kind == "expense" {
+        try_match_fixed_cost_id(
+          &conn,
+          &account_id,
+          &tx.date,
+          &tx.title,
+          tx.notes.as_deref(),
+          tx.counterparty_iban.as_deref(),
+        )?
+      } else {
+        None
+      };
+      if let Some(ref fc_id) = fixed_cost_id {
+        if let Ok((icon, color)) = crate::cost_assignment::fixed_cost_style(&conn, fc_id) {
+          fc_icon = icon;
+          fc_color = color;
+        }
+      }
       conn.execute(
-        "UPDATE ledger_transactions SET date = ?2, amount_cents = ?3, kind = ?4, title = ?5, notes = ?6, icon = ?7, color = ?8 WHERE id = ?1",
+        "UPDATE ledger_transactions SET date = ?2, amount_cents = ?3, kind = ?4, title = ?5, notes = ?6, icon = ?7, color = ?8, fixed_cost_id = ?9 WHERE id = ?1",
         params![
           existing_id,
           tx.date,
@@ -848,8 +912,9 @@ fn import_bank_export_inner(
           kind,
           tx.title,
           tx.notes,
-          icon,
-          color,
+          fc_icon,
+          fc_color,
+          fixed_cost_id,
         ],
       )?;
       if kind == "income" {
@@ -873,6 +938,32 @@ fn import_bank_export_inner(
             &occurrence,
             tx.amount_cents,
           )?;
+        } else if append_only {
+          if let Some(primary_id) = crate::accounts::get_primary_income_forecast_id(&conn)? {
+            if tx.amount_cents > 0 && primary_income_tx_matches(&conn, &account_id, tx)? {
+              let occurrence = crate::dashboard_period::primary_income_occurrence_for_date(&conn, &tx.date)?
+                .unwrap_or_else(|| tx.date.clone());
+              link_ledger_income_to_forecast(
+                &conn,
+                &existing_id,
+                &primary_id,
+                &occurrence,
+                tx.amount_cents,
+              )?;
+            }
+          } else if income_forecast_auto_match_allowed(&conn, tx)? {
+            if let Some((forecast_id, occurrence_date)) =
+              try_match_income_forecast(&conn, &account_id, tx.amount_cents, &tx.date)?
+            {
+              link_ledger_income_to_forecast(
+                &conn,
+                &existing_id,
+                &forecast_id,
+                &occurrence_date,
+                tx.amount_cents,
+              )?;
+            }
+          }
         } else if income_forecast_auto_match_allowed(&conn, tx)? {
           if let Some((forecast_id, occurrence_date)) =
             try_match_income_forecast(&conn, &account_id, tx.amount_cents, &tx.date)?
@@ -1043,6 +1134,26 @@ fn import_bank_export_inner(
         let occurrence = crate::dashboard_period::primary_income_occurrence_for_date(&conn, &tx.date)?
           .unwrap_or_else(|| tx.date.clone());
         link_ledger_income_to_forecast(&conn, &id, forecast_id, &occurrence, tx.amount_cents)?;
+      } else if append_only {
+        if let Some(primary_id) = crate::accounts::get_primary_income_forecast_id(&conn)? {
+          if tx.amount_cents > 0 && primary_income_tx_matches(&conn, &target_account_id, tx)? {
+            let occurrence = crate::dashboard_period::primary_income_occurrence_for_date(&conn, &tx.date)?
+              .unwrap_or_else(|| tx.date.clone());
+            link_ledger_income_to_forecast(&conn, &id, &primary_id, &occurrence, tx.amount_cents)?;
+          }
+        } else if income_forecast_auto_match_allowed(&conn, tx)? {
+          if let Some((forecast_id, occurrence_date)) =
+            try_match_income_forecast(&conn, &target_account_id, tx.amount_cents, &tx.date)?
+          {
+            link_ledger_income_to_forecast(
+              &conn,
+              &id,
+              &forecast_id,
+              &occurrence_date,
+              tx.amount_cents,
+            )?;
+          }
+        }
       } else if income_forecast_auto_match_allowed(&conn, tx)? {
         if let Some((forecast_id, occurrence_date)) =
           try_match_income_forecast(&conn, &target_account_id, tx.amount_cents, &tx.date)?

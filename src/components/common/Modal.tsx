@@ -9,9 +9,10 @@ interface ModalProps {
   children: ReactNode;
   wide?: boolean;
   bleed?: boolean;
+  nested?: boolean;
 }
 
-export function Modal({ open, title, onClose, children, wide, bleed }: ModalProps) {
+export function Modal({ open, title, onClose, children, wide, bleed, nested }: ModalProps) {
   const { t } = useLocale();
 
   useEffect(() => {
@@ -26,9 +27,9 @@ export function Modal({ open, title, onClose, children, wide, bleed }: ModalProp
   if (!open) return null;
 
   return (
-    <div className="fh-modal-backdrop" onClick={onClose}>
+    <div className={`fh-modal-backdrop${nested ? ' fh-modal-backdrop-nested' : ''}`} onClick={onClose}>
       <div
-        className={`fh-modal${wide ? ' fh-modal-wide' : ''}${bleed ? ' fh-modal-bleed' : ''}`}
+        className={`fh-modal${wide ? ' fh-modal-wide' : ''}${bleed ? ' fh-modal-bleed' : ''}${nested ? ' fh-modal-nested' : ''}`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

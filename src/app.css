@@ -1326,8 +1326,15 @@ label {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
-.fh-icon-picker,
 .fh-color-picker {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.fh-icon-picker {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
@@ -1498,12 +1505,22 @@ label {
   box-shadow: var(--fh-shadow-glass), 0 24px 64px rgba(0, 0, 0, 0.18);
 }
 
+.fh-modal-backdrop-nested {
+  z-index: 300;
+  background: color-mix(in srgb, var(--fh-bg) 40%, rgba(0, 0, 0, 0.28));
+}
+
 .fh-modal-wide {
-  width: min(680px, 100%);
+  width: min(680px, calc(100vw - 2rem));
 }
 
 .fh-modal-bleed {
   width: min(960px, calc(100vw - 2rem));
+}
+
+.fh-modal-nested {
+  width: min(440px, calc(100vw - 4rem));
+  max-height: min(80vh, calc(100vh - 6rem));
 }
 
 .fh-modal-header {
@@ -1869,16 +1886,33 @@ label {
 
 .fh-dev-log-dock {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
   z-index: 2500;
-  width: min(520px, calc(100vw - 32px));
   min-width: 280px;
   min-height: 120px;
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 32px);
   resize: both;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.fh-dev-log-dock-handle {
+  height: 28px;
+  min-height: 28px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  flex: 0 0 auto;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--fh-border, #e2e8f0) 85%, transparent),
+    color-mix(in srgb, var(--fh-border, #e2e8f0) 35%, transparent)
+  );
+}
+
+.fh-dev-log-dock-handle:active {
+  cursor: grabbing;
 }
 
 .fh-dev-log-dock .fh-startup-dev-terminal {

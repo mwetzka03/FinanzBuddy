@@ -76,13 +76,22 @@ pub(crate) fn sum_categorized_transactions_for_month(
   let (start, end) = month_bounds(month).ok_or_else(|| AppError::Invalid("invalid month".into()))?;
   let range_start = iso_date(start);
   let range_end = iso_date(end);
-  let sum: i64 = conn.query_row(
-    "SELECT COALESCE(SUM(ABS(amount_cents)), 0) FROM ledger_transactions
-     WHERE variable_cost_id = ?1 AND kind = 'expense' AND date >= ?2 AND date <= ?3",
+  let direct: i64 = conn.query_row(
+    "SELECT COALESCE(SUM(ABS(amount_cents)), 0) FROM ledger_transactions l
+     WHERE l.variable_cost_id = ?1 AND l.kind = 'expense' AND l.date >= ?2 AND l.date <= ?3
+       AND NOT EXISTS (
+         SELECT 1 FROM ledger_variable_cost_splits s WHERE s.ledger_transaction_id = l.id
+       )",
     params![vc_id, range_start, range_end],
     |r| r.get(0),
   )?;
-  Ok(sum)
+  let split: i64 = conn.query_row(
+    "SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_variable_cost_splits
+     WHERE variable_cost_id = ?1 AND month_key = ?2",
+    params![vc_id, month],
+    |r| r.get(0),
+  )?;
+  Ok(direct + split)
 }
 
 /// Kategorisierte VK-Transaktionen im laufenden Monat nicht zusätzlich zum Prognosewert zählen.
@@ -225,6 +234,15 @@ pub(crate) fn finalize_all_variable_cost_months(conn: &rusqlite::Connection) -> 
       let mut stmt = conn.prepare(
         "SELECT DISTINCT substr(date, 1, 7) FROM ledger_transactions
          WHERE variable_cost_id = ?1 AND kind = 'expense'",
+      )?;
+      let rows = stmt.query_map(params![t.id.clone()], |r| r.get::<_, String>(0))?;
+      for row in rows {
+        months.insert(row?);
+      }
+    }
+    {
+      let mut stmt = conn.prepare(
+        "SELECT DISTINCT month_key FROM ledger_variable_cost_splits WHERE variable_cost_id = ?1",
       )?;
       let rows = stmt.query_map(params![t.id.clone()], |r| r.get::<_, String>(0))?;
       for row in rows {

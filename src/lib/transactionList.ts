@@ -177,20 +177,13 @@ export function findIncomeOccurrenceLedgerTx(
   });
 }
 
-/** Haupteinnahme: verknüpfte Ist-Buchung inkl. Bankimport am Prognosetag. */
+/** Haupteinnahme: verknüpfte Ist-Buchung (nur explizite Prognose-Verknüpfung). */
 export function findPrimaryIncomeOccurrenceLedgerTx(
   forecast: IncomeForecast,
   occurrenceDate: IsoDate,
   ledger: LedgerTransaction[],
 ): LedgerTransaction | undefined {
-  const linked = findIncomeOccurrenceLedgerTx(forecast, occurrenceDate, ledger);
-  if (linked) return linked;
-  return ledger.find(
-    (tx) =>
-      tx.kind === 'income' &&
-      tx.sourceId?.startsWith('bank_import:') &&
-      tx.date === occurrenceDate,
-  );
+  return findIncomeOccurrenceLedgerTx(forecast, occurrenceDate, ledger);
 }
 
 export function isIncomeOccurrenceBooked(
@@ -291,13 +284,18 @@ export function buildUnifiedEntries(input: {
   buyItemGroupById?: Map<string, { icon: string; color: string }>;
   nextDatesByForecastId: Map<string, IsoDate[]>;
   nextDatesByFixedCostId: Map<string, IsoDate[]>;
+  dismissedFixedCostOccurrences?: Set<string>;
 }): UnifiedEntry[] {
   const items: UnifiedEntry[] = [];
 
   for (const row of input.ledger) {
     let categoryLabel: string | null = null;
     if (row.variableCostId) {
-      categoryLabel = input.variableCostNames.get(row.variableCostId) ?? null;
+      if (row.title.includes(' / ') || row.title.includes(' · ')) {
+        categoryLabel = row.title;
+      } else {
+        categoryLabel = input.variableCostNames.get(row.variableCostId) ?? null;
+      }
     } else if (row.fixedCostId) {
       categoryLabel = input.fixedCostNames.get(row.fixedCostId) ?? null;
     } else if (row.buyItemGroupId) {
@@ -343,9 +341,13 @@ export function buildUnifiedEntries(input: {
     if (input.accountId && forecast.accountId !== input.accountId) continue;
     const nextDates = input.nextDatesByForecastId.get(forecast.id);
     const occurrences = incomeForecastOccurrences(forecast, nextDates);
-    const occDate = occurrences.find(
-      (date) => !findPrimaryIncomeOccurrenceLedgerTx(forecast, date, input.ledger),
-    );
+    const isPrimary = input.primaryIncomeForecastId === forecast.id;
+    const occDate = occurrences.find((date) => {
+      if (isPrimary) {
+        return !findPrimaryIncomeOccurrenceLedgerTx(forecast, date, input.ledger);
+      }
+      return !findIncomeOccurrenceLedgerTx(forecast, date, input.ledger);
+    });
     if (!occDate) continue;
     items.push({
       id: `income_forecast:${forecast.id}:${occDate}`,
@@ -368,6 +370,9 @@ export function buildUnifiedEntries(input: {
 
   for (const item of input.buyItems ?? []) {
     if (item.status !== 'parked') continue;
+    const showBuyForecasts =
+      !input.accountId || input.accountId === input.mainAccountId;
+    if (!showBuyForecasts) continue;
     const sortDate = buyItemSortDate(item);
     items.push({
       id: `buy_forecast:${item.id}`,
@@ -389,7 +394,11 @@ export function buildUnifiedEntries(input: {
     if (input.accountId && fc.accountId !== input.accountId) continue;
     const nextDates = input.nextDatesByFixedCostId.get(fc.id);
     const occurrences = fixedCostForecastOccurrences(fc, nextDates);
-    const occDate = occurrences.find((date) => !isFixedCostOccurrenceBooked(fc, date, input.ledger));
+    const occDate = occurrences.find(
+      (date) =>
+        !isFixedCostOccurrenceBooked(fc, date, input.ledger) &&
+        !input.dismissedFixedCostOccurrences?.has(`${fc.id}:${date}`),
+    );
     if (!occDate) continue;
     items.push({
       id: `expense_forecast:${fc.id}:${occDate}`,
@@ -484,6 +493,7 @@ export function ledgerRowTitle(
   buyItemGroupNames?: Map<string, string>,
 ): string {
   if (row.kind === 'expense' && row.variableCostId) {
+    if (row.title.includes(' / ') || row.title.includes(' · ')) return row.title;
     return variableCostNames?.get(row.variableCostId) ?? row.title;
   }
   if (row.kind === 'expense' && row.fixedCostId) {

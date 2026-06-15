@@ -223,6 +223,8 @@ export async function convertLedgerToTransfer(input: {
   toAccountId: string;
   title: string;
   notes: string | null;
+  icon?: string;
+  color?: string;
 }): Promise<void> {
   await invoke('convert_ledger_to_transfer', { input });
 }
@@ -235,6 +237,8 @@ export async function updateTransfer(input: {
   toAccountId: string;
   title: string;
   notes: string | null;
+  icon?: string;
+  color?: string;
 }): Promise<void> {
   await invoke('update_transfer', { input });
 }
@@ -257,6 +261,19 @@ export async function updateFixedCost(input: FixedCost): Promise<void> {
 
 export async function deleteFixedCost(id: string): Promise<void> {
   await invoke('delete_fixed_cost', { id });
+}
+
+export async function dismissFixedCostOccurrence(input: {
+  fixedCostId: string;
+  occurrenceDate: IsoDate;
+}): Promise<void> {
+  await invoke('dismiss_fixed_cost_occurrence', { input });
+}
+
+export async function listFixedCostDismissedOccurrences(): Promise<
+  { fixedCostId: string; occurrenceDate: IsoDate }[]
+> {
+  return await invoke('list_fixed_cost_dismissed_occurrences');
 }
 
 export async function previewFixedCost(id: string): Promise<IsoDate[]> {

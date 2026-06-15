@@ -40,7 +40,7 @@ export function BudgetPoolHistoryModal({ open, pool, onClose }: BudgetPoolHistor
   if (!pool) return null;
 
   return (
-    <Modal open={open} bleed wide title={pool.name} onClose={onClose}>
+    <Modal open={open} bleed title={pool.name} onClose={onClose}>
       <p style={{ ...ui.sectionHint, marginTop: 0 }}>{t('budgetPools.historyIntro')}</p>
       {pool.scalable ? <p style={{ ...ui.sectionHint, marginTop: 0 }}>{t('budgetPools.scalableHint')}</p> : null}
       {error ? <p style={{ color: ui.colors.amountNegative, marginTop: 0 }}>{error}</p> : null}

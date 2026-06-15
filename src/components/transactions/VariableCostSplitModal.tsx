@@ -71,7 +71,7 @@ export function VariableCostSplitModal({
   }
 
   return (
-    <Modal open={open} wide title={t('transactions.variableCostSplitTitle')} onClose={onClose}>
+    <Modal open={open} nested title={t('transactions.variableCostSplitTitle')} onClose={onClose}>
       <div className="fh-form">
         <p className="fh-form-hint" style={{ marginTop: 0 }}>
           {t('transactions.variableCostSplitHint', { total: formatEurFromCents(txAmountCents) })}

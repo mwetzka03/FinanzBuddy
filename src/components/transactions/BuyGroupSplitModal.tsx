@@ -84,7 +84,7 @@ export function BuyGroupSplitModal({
   }
 
   return (
-    <Modal open={open} wide title={t('transactions.buyGroupSplitTitle')} onClose={onClose}>
+    <Modal open={open} nested title={t('transactions.buyGroupSplitTitle')} onClose={onClose}>
       <div className="fh-form">
         <p className="fh-form-hint" style={{ marginTop: 0 }}>
           {t('transactions.buyGroupSplitHint', {

@@ -845,7 +845,7 @@ function BuyItemGroupDetailModal({
   }
 
   return (
-    <Modal open={open} title={`${t('buyList.groupDetail')}: ${group.name}`} onClose={onClose} wide>
+    <Modal open={open} title={`${t('buyList.groupDetail')}: ${group.name}`} onClose={onClose} bleed>
       <div className="fh-form">
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t('buyList.groupMembers')}</div>
         {members.length === 0 ? (

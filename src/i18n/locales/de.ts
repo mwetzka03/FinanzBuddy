@@ -297,6 +297,7 @@ export const de = {
     variableCostSplitEmpty: 'Lege zuerst variable Kosten an.',
     variableCostSplitSummary: 'Aufteilung: {{count}} Posten',
     variableCostSplitAction: 'Aufteilen…',
+    variableCostSplitOnlyHint: 'Betrag auf variable Kosten aufteilen (kein Einzelposten).',
     variableCostSplitClear: 'Aufteilung entfernen',
     oneTimeEntry: 'Einmaliger Eintrag',
     oneTimeEntryHint: 'Ohne Rhythmus und Fälligkeit — erscheint als geplanter Einkauf, nicht als Fixkosten.',
@@ -373,16 +374,32 @@ export const de = {
   variableCosts: {
     title: 'Variable Kosten',
     intro:
-      'Monatlich wiederkehrende Kosten als Budget (Prognose). Tatsächliche Werte entstehen aus kategorisierten Transaktionen.',
+      'Wiederkehrende Kosten als Budget (Prognose) pro Zeitraum. Tatsächliche Werte entstehen aus kategorisierten Transaktionen.',
     newEntry: 'Neuer Eintrag',
     editEntry: 'Eintrag bearbeiten',
     formHint:
-      'Die Prognose gilt jeden Monat als Budget. Tatsächliche Werte entstehen aus Transaktionen oder manueller Eingabe.',
+      'Die Prognose gilt jeden Zeitraum als Budget. Tatsächliche Werte entstehen aus Transaktionen oder manueller Eingabe.',
     namePlaceholder: 'Tanken, Restaurant…',
-    listHint: 'Klicke auf den Namen für Monatsübersicht, Transaktionen und manuelle Ist-Eingabe.',
+    listHint: 'Klicke auf den Namen für Transaktionen, Ist-Wert und Zeitraumnavigation.',
     forecast: 'Prognose',
     actual: 'Tatsächlich',
     spent: 'Gebucht',
+    notFound: 'Eintrag nicht gefunden.',
+    detailIntro: 'Budget: {{budget}} pro Zeitraum ({{mode}}).',
+    periodSalary: 'Gehaltszeitraum',
+    periodCalendar: 'Kalendermonat',
+    periodLabel: 'Zeitraum',
+    currentPeriodSection: 'Aktueller Zeitraum ({{period}})',
+    openPeriodHint: 'Laufender Zeitraum: kategorisierte Transaktionen ({{spent}}) fließen in Tatsächlich ein.',
+    periodTransactionsTitle: 'Transaktionen im Zeitraum',
+    noPeriodTransactions: 'Keine zugeordneten Transaktionen in diesem Zeitraum.',
+    transactionsSum: 'Summe',
+    manualActualTitle: 'Manueller Ist-Wert',
+    manualActualHint:
+      'Optionaler fester Betrag für den Zeitraum. Leer lassen und speichern = Summe der Transaktionen als Ist-Wert.',
+    manualActualPlaceholder: 'Leer = Transaktionssumme',
+    manualActualFallback: 'Ohne Eingabe zählt die Transaktionssumme: {{sum}}',
+    manualActualActive: 'Manuell gebucht: {{amount}}',
   },
 
   budgetPools: {

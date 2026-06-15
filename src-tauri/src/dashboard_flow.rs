@@ -147,7 +147,7 @@ pub fn stock_purchase_expense_cents(
     .sum()
 }
 
-/// Einnahmen/Ausgaben-Kacheln bei „Alle Konten“ — reale Flows ohne Umbuchungen/Prognosen (nur Einnahmen-Kachel).
+/// Einnahmen/Ausgaben-Kacheln bei „Alle Konten“ — reale Flows ohne Umbuchungen; Prognose-Einnahmen zählen mit.
 pub fn aggregate_all_accounts_card_flows(
   events: &[TimelineEvent],
   range_start: &str,
@@ -162,6 +162,9 @@ pub fn aggregate_all_accounts_card_flows(
       continue;
     }
     if is_prognostic_flow_event(ev) {
+      if ev.r#type == "income" && !ev.id.starts_with("ledger:") {
+        totals.income_cents += ev.amount_cents;
+      }
       continue;
     }
     if skips_flow_total(ev) {

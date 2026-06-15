@@ -6,7 +6,7 @@ use crate::models::FixedCost;
 use crate::state::AppState;
 use chrono::{Datelike, Utc};
 use rusqlite::{params, OptionalExtension};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use uuid::Uuid;
 
@@ -138,8 +138,119 @@ pub fn delete_fixed_cost(state: State<'_, AppState>, id: String) -> CmdResult<()
 
 fn delete_fixed_cost_inner(state: State<'_, AppState>, id: String) -> AppResult<()> {
   let conn = state.conn.lock().unwrap();
+  conn.execute(
+    "UPDATE ledger_transactions SET fixed_cost_id = NULL WHERE fixed_cost_id = ?1",
+    params![id],
+  )?;
   conn.execute("DELETE FROM fixed_costs WHERE id = ?1", params![id])?;
   Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DismissFixedCostOccurrenceInput {
+  pub fixed_cost_id: String,
+  pub occurrence_date: String,
+}
+
+#[tauri::command]
+pub fn dismiss_fixed_cost_occurrence(
+  state: State<'_, AppState>,
+  input: DismissFixedCostOccurrenceInput,
+) -> CmdResult<()> {
+  to_cmd_result(dismiss_fixed_cost_occurrence_inner(state, input))
+}
+
+fn dismiss_fixed_cost_occurrence_inner(
+  state: State<'_, AppState>,
+  input: DismissFixedCostOccurrenceInput,
+) -> AppResult<()> {
+  if crate::models::parse_iso_date(&input.occurrence_date).is_none() {
+    return Err(AppError::Invalid("occurrenceDate must be YYYY-MM-DD".into()));
+  }
+  let conn = state.conn.lock().unwrap();
+  let cadence: String = conn.query_row(
+    "SELECT cadence FROM fixed_costs WHERE id = ?1",
+    params![input.fixed_cost_id],
+    |r| r.get(0),
+  )?;
+  if cadence == "monthly" || cadence == "yearly" || cadence == "once" {
+    let month = super::helpers::month_from_date(&input.occurrence_date)?;
+    let (start, end) = crate::logic::month_bounds(&month).ok_or_else(|| AppError::Invalid("invalid month".into()))?;
+    let range_start = super::helpers::iso_date(start);
+    let range_end = super::helpers::iso_date(end);
+    let mut stmt = conn.prepare(
+      "SELECT id FROM ledger_transactions
+       WHERE fixed_cost_id = ?1 AND kind = 'expense' AND date >= ?2 AND date <= ?3",
+    )?;
+    let ids = stmt
+      .query_map(params![input.fixed_cost_id, range_start, range_end], |r| r.get::<_, String>(0))?
+      .collect::<Result<Vec<_>, _>>()?;
+    for ledger_id in ids {
+      crate::commands::ledger::delete_ledger_on_conn(&conn, &ledger_id)?;
+    }
+  } else {
+    let mut stmt = conn.prepare(
+      "SELECT id FROM ledger_transactions
+       WHERE fixed_cost_id = ?1 AND kind = 'expense' AND date = ?2",
+    )?;
+    let ids = stmt
+      .query_map(params![input.fixed_cost_id, input.occurrence_date], |r| r.get::<_, String>(0))?
+      .collect::<Result<Vec<_>, _>>()?;
+    for ledger_id in ids {
+      crate::commands::ledger::delete_ledger_on_conn(&conn, &ledger_id)?;
+    }
+  }
+  conn.execute(
+    "INSERT OR IGNORE INTO fixed_cost_dismissed_occurrences (fixed_cost_id, occurrence_date) VALUES (?1, ?2)",
+    params![input.fixed_cost_id, input.occurrence_date],
+  )?;
+  Ok(())
+}
+
+pub(crate) fn is_fixed_cost_occurrence_dismissed(
+  conn: &rusqlite::Connection,
+  fixed_cost_id: &str,
+  occurrence_date: &str,
+) -> AppResult<bool> {
+  let n: i64 = conn.query_row(
+    "SELECT COUNT(*) FROM fixed_cost_dismissed_occurrences WHERE fixed_cost_id = ?1 AND occurrence_date = ?2",
+    params![fixed_cost_id, occurrence_date],
+    |r| r.get(0),
+  )?;
+  Ok(n > 0)
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FixedCostDismissedOccurrence {
+  pub fixed_cost_id: String,
+  pub occurrence_date: String,
+}
+
+#[tauri::command]
+pub fn list_fixed_cost_dismissed_occurrences(
+  state: State<'_, AppState>,
+) -> CmdResult<Vec<FixedCostDismissedOccurrence>> {
+  to_cmd_result(list_fixed_cost_dismissed_occurrences_inner(state))
+}
+
+fn list_fixed_cost_dismissed_occurrences_inner(
+  state: State<'_, AppState>,
+) -> AppResult<Vec<FixedCostDismissedOccurrence>> {
+  let conn = state.conn.lock().unwrap();
+  let mut stmt = conn.prepare(
+    "SELECT fixed_cost_id, occurrence_date FROM fixed_cost_dismissed_occurrences ORDER BY occurrence_date ASC",
+  )?;
+  let rows = stmt
+    .query_map([], |r| {
+      Ok(FixedCostDismissedOccurrence {
+        fixed_cost_id: r.get(0)?,
+        occurrence_date: r.get(1)?,
+      })
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+  Ok(rows)
 }
 
 #[derive(Debug, Deserialize)]
@@ -247,5 +358,10 @@ fn preview_fixed_cost_inner(state: State<'_, AppState>, id: String) -> AppResult
     &re,
     3,
     end_charge_date.as_deref(),
-  ))
+  )
+  .into_iter()
+  .filter(|d| {
+    is_fixed_cost_occurrence_dismissed(&conn, &id, d).unwrap_or(false) == false
+  })
+  .collect())
 }

@@ -3,10 +3,7 @@ use crate::state::AppState;
 use crate::stocks;
 use rusqlite::{params, OptionalExtension};
 use std::sync::Mutex;
-use std::time::Duration;
 use tauri::{AppHandle, Manager};
-
-pub const REFRESH_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
 const SETTINGS_KEY_CENTS: &str = "stock_portfolio_total_cents";
 const SETTINGS_KEY_UPDATED_AT: &str = "stock_portfolio_updated_at";
@@ -80,12 +77,6 @@ pub fn spawn_refresh_loop(app: AppHandle) {
   std::thread::spawn(move || {
     if let Err(e) = refresh_once(&app) {
       eprintln!("Depot-Saldo: Start-Abgleich fehlgeschlagen: {e}");
-    }
-    loop {
-      std::thread::sleep(REFRESH_INTERVAL);
-      if let Err(e) = refresh_once(&app) {
-        eprintln!("Depot-Saldo: Auto-Abgleich fehlgeschlagen: {e}");
-      }
     }
   });
 }

@@ -401,8 +401,7 @@ pub fn delete_ledger_transaction(state: State<'_, AppState>, id: String) -> CmdR
   to_cmd_result(delete_ledger_transaction_inner(state, id))
 }
 
-fn delete_ledger_transaction_inner(state: State<'_, AppState>, id: String) -> AppResult<()> {
-  let conn = state.conn.lock().unwrap();
+pub(crate) fn delete_ledger_on_conn(conn: &rusqlite::Connection, id: &str) -> AppResult<()> {
   let kind: String = conn.query_row(
     "SELECT kind FROM ledger_transactions WHERE id = ?1",
     params![id],
@@ -417,15 +416,35 @@ fn delete_ledger_transaction_inner(state: State<'_, AppState>, id: String) -> Ap
     |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
   )?;
   if let Some(ref bid) = buy_id {
-    crate::buy_assignment::revert_buy_item(&conn, bid)?;
+    crate::buy_assignment::revert_buy_item(conn, bid)?;
   }
   if group_id.is_some() {
-    clear_buy_group_assignment_for_transaction(&conn, &id)?;
+    clear_buy_group_assignment_for_transaction(conn, id)?;
   }
-  clear_expense_splits_for_ledger(&conn, &id)?;
+  let split_vc_ids: Vec<String> = conn
+    .prepare("SELECT DISTINCT variable_cost_id FROM ledger_variable_cost_splits WHERE ledger_transaction_id = ?1")?
+    .query_map(params![id], |r| r.get(0))?
+    .collect::<Result<Vec<_>, _>>()?;
+  clear_expense_splits_for_ledger(conn, id)?;
+  conn.execute(
+    "DELETE FROM income_forecast_actuals WHERE ledger_transaction_id = ?1",
+    params![id],
+  )?;
+  conn.execute(
+    "UPDATE income_forecasts SET ledger_transaction_id = NULL WHERE ledger_transaction_id = ?1",
+    params![id],
+  )?;
   conn.execute("DELETE FROM ledger_transactions WHERE id = ?1", params![id])?;
-  resync_variable_cost_months(&conn, vc_id.as_deref(), Some(date.as_str()))?;
+  resync_variable_cost_months(conn, vc_id.as_deref(), Some(date.as_str()))?;
+  for vc in split_vc_ids {
+    resync_variable_cost_months(conn, Some(vc.as_str()), Some(date.as_str()))?;
+  }
   Ok(())
+}
+
+fn delete_ledger_transaction_inner(state: State<'_, AppState>, id: String) -> AppResult<()> {
+  let conn = state.conn.lock().unwrap();
+  delete_ledger_on_conn(&conn, &id)
 }
 
 #[derive(Debug, Deserialize)]
@@ -468,6 +487,63 @@ fn create_transfer_inner(state: State<'_, AppState>, input: CreateTransferInput)
   Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateTransferInput {
+  pub id: String,
+  pub date: String,
+  pub amount_cents: i64,
+  pub from_account_id: String,
+  pub to_account_id: String,
+  pub title: String,
+  pub notes: Option<String>,
+  pub icon: Option<String>,
+  pub color: Option<String>,
+}
+
+#[tauri::command]
+pub fn update_transfer(state: State<'_, AppState>, input: UpdateTransferInput) -> CmdResult<()> {
+  to_cmd_result(update_transfer_inner(state, input))
+}
+
+fn update_transfer_inner(state: State<'_, AppState>, input: UpdateTransferInput) -> AppResult<()> {
+  if crate::models::parse_iso_date(&input.date).is_none() {
+    return Err(AppError::Invalid("date must be YYYY-MM-DD".into()));
+  }
+  if input.amount_cents <= 0 {
+    return Err(AppError::Invalid("amount must be > 0".into()));
+  }
+  if input.from_account_id == input.to_account_id {
+    return Err(AppError::Invalid("fromAccountId must differ from toAccountId".into()));
+  }
+  let conn = state.conn.lock().unwrap();
+  let kind: String = conn.query_row(
+    "SELECT kind FROM ledger_transactions WHERE id = ?1",
+    params![input.id],
+    |r| r.get(0),
+  )?;
+  if kind != "transfer" {
+    return Err(AppError::Invalid("only transfers can be updated".into()));
+  }
+  let icon = normalize_icon(input.icon, default_icon_for_kind("transfer"));
+  let color = normalize_color(input.color, default_color_for_kind("transfer"));
+  conn.execute(
+    "UPDATE ledger_transactions SET date = ?2, amount_cents = ?3, from_account_id = ?4, to_account_id = ?5, title = ?6, notes = ?7, icon = ?8, color = ?9 WHERE id = ?1",
+    params![
+      input.id,
+      input.date,
+      input.amount_cents,
+      input.from_account_id,
+      input.to_account_id,
+      input.title,
+      input.notes,
+      icon,
+      color,
+    ],
+  )?;
+  Ok(())
+}
+
 #[tauri::command]
 pub fn delete_transfer(state: State<'_, AppState>, id: String) -> CmdResult<()> {
   to_cmd_result(delete_transfer_inner(state, id))
@@ -484,5 +560,146 @@ fn delete_transfer_inner(state: State<'_, AppState>, id: String) -> AppResult<()
     return Err(AppError::Invalid("only transfers can be deleted".into()));
   }
   conn.execute("DELETE FROM ledger_transactions WHERE id = ?1", params![id])?;
+  Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertTransferToLedgerInput {
+  pub id: String,
+  pub date: String,
+  pub amount_cents: i64,
+  pub account_id: String,
+  pub kind: String,
+  pub title: String,
+  pub notes: Option<String>,
+  pub variable_cost_id: Option<String>,
+  pub fixed_cost_id: Option<String>,
+  pub icon: Option<String>,
+  pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertLedgerToTransferInput {
+  pub id: String,
+  pub date: String,
+  pub amount_cents: i64,
+  pub from_account_id: String,
+  pub to_account_id: String,
+  pub title: String,
+  pub notes: Option<String>,
+  pub icon: Option<String>,
+  pub color: Option<String>,
+}
+
+#[tauri::command]
+pub fn convert_transfer_to_ledger(state: State<'_, AppState>, input: ConvertTransferToLedgerInput) -> CmdResult<()> {
+  to_cmd_result(convert_transfer_to_ledger_inner(state, input))
+}
+
+fn convert_transfer_to_ledger_inner(state: State<'_, AppState>, input: ConvertTransferToLedgerInput) -> AppResult<()> {
+  if crate::models::parse_iso_date(&input.date).is_none() {
+    return Err(AppError::Invalid("date must be YYYY-MM-DD".into()));
+  }
+  if input.amount_cents == 0 {
+    return Err(AppError::Invalid("amount must not be zero".into()));
+  }
+  let kind = input.kind.as_str();
+  if kind != "income" && kind != "expense" && kind != "adjustment" {
+    return Err(AppError::Invalid("invalid kind for ledger conversion".into()));
+  }
+  let conn = state.conn.lock().unwrap();
+  let existing_kind: String = conn.query_row(
+    "SELECT kind FROM ledger_transactions WHERE id = ?1",
+    params![input.id],
+    |r| r.get(0),
+  )?;
+  if existing_kind != "transfer" {
+    return Err(AppError::Invalid("only transfers can be converted".into()));
+  }
+  let icon = normalize_icon(input.icon.clone(), default_icon_for_kind(kind));
+  let color = normalize_color(input.color.clone(), default_color_for_kind(kind));
+  let signed_amount = if kind == "expense" || kind == "adjustment" {
+    -input.amount_cents.abs()
+  } else {
+    input.amount_cents.abs()
+  };
+  conn.execute(
+    "UPDATE ledger_transactions SET date = ?2, amount_cents = ?3, account_id = ?4, from_account_id = NULL, to_account_id = NULL, kind = ?5, title = ?6, notes = ?7, internal_transfer = 0, variable_cost_id = ?8, fixed_cost_id = ?9, icon = ?10, color = ?11 WHERE id = ?1",
+    params![
+      input.id,
+      input.date,
+      signed_amount,
+      input.account_id,
+      kind,
+      input.title,
+      input.notes,
+      input.variable_cost_id,
+      input.fixed_cost_id,
+      icon,
+      color,
+    ],
+  )?;
+  Ok(())
+}
+
+#[tauri::command]
+pub fn convert_ledger_to_transfer(state: State<'_, AppState>, input: ConvertLedgerToTransferInput) -> CmdResult<()> {
+  to_cmd_result(convert_ledger_to_transfer_inner(state, input))
+}
+
+fn convert_ledger_to_transfer_inner(state: State<'_, AppState>, input: ConvertLedgerToTransferInput) -> AppResult<()> {
+  if crate::models::parse_iso_date(&input.date).is_none() {
+    return Err(AppError::Invalid("date must be YYYY-MM-DD".into()));
+  }
+  if input.amount_cents <= 0 {
+    return Err(AppError::Invalid("amount must be > 0".into()));
+  }
+  if input.from_account_id == input.to_account_id {
+    return Err(AppError::Invalid("fromAccountId must differ from toAccountId".into()));
+  }
+  let conn = state.conn.lock().unwrap();
+  let (kind, vc_id, fc_id, buy_id, group_id, date): (
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+  ) = conn.query_row(
+    "SELECT kind, variable_cost_id, fixed_cost_id, buy_item_id, buy_item_group_id, date FROM ledger_transactions WHERE id = ?1",
+    params![input.id],
+    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+  )?;
+  if kind == "transfer" {
+    return Err(AppError::Invalid("already a transfer".into()));
+  }
+  if vc_id.is_some() || fc_id.is_some() || buy_id.is_some() || group_id.is_some() {
+    clear_expense_splits_for_ledger(&conn, &input.id)?;
+    if let Some(ref bid) = buy_id {
+      crate::buy_assignment::revert_buy_item(&conn, bid)?;
+    }
+    if group_id.is_some() {
+      clear_buy_group_assignment_for_transaction(&conn, &input.id)?;
+    }
+    resync_variable_cost_months(&conn, vc_id.as_deref(), Some(date.as_str()))?;
+  }
+  let icon = normalize_icon(input.icon, default_icon_for_kind("transfer"));
+  let color = normalize_color(input.color, default_color_for_kind("transfer"));
+  conn.execute(
+    "UPDATE ledger_transactions SET date = ?2, amount_cents = ?3, account_id = NULL, from_account_id = ?4, to_account_id = ?5, kind = 'transfer', title = ?6, notes = ?7, internal_transfer = 1, variable_cost_id = NULL, fixed_cost_id = NULL, buy_item_id = NULL, buy_item_group_id = NULL, icon = ?8, color = ?9 WHERE id = ?1",
+    params![
+      input.id,
+      input.date,
+      input.amount_cents,
+      input.from_account_id,
+      input.to_account_id,
+      input.title,
+      input.notes,
+      icon,
+      color,
+    ],
+  )?;
   Ok(())
 }

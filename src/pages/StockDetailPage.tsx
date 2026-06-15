@@ -79,6 +79,14 @@ export function StockDetailPage() {
     return next;
   }
 
+  async function syncPortfolioWithQuoteRefresh() {
+    const next = await syncPortfolioFromDetail({ skipQuotes: false });
+    if (next) {
+      void refreshChart(next.position.holding.symbol, chartRange);
+    }
+    return next;
+  }
+
   async function refreshChart(symbol: string, range: StockChartRange) {
     setChartLoading(true);
     try {
@@ -180,8 +188,7 @@ export function StockDetailPage() {
     });
     setSellOpen(false);
     if (stillExists) {
-      await syncPortfolioFromDetail({ skipQuotes: true });
-      void refreshDetail();
+      await syncPortfolioWithQuoteRefresh();
     } else {
       removeFromStockPortfolioCache(id);
       navigate('/aktien');
@@ -351,8 +358,7 @@ export function StockDetailPage() {
           preset={buyPreset}
           onClose={() => setBuyOpen(false)}
           onCreated={async () => {
-            await syncPortfolioFromDetail({ skipQuotes: true });
-            void refreshDetail();
+            await syncPortfolioWithQuoteRefresh();
           }}
           onError={setError}
         />

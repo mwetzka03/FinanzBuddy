@@ -202,6 +202,7 @@ export interface VariableCostCategorizedTransaction {
   title: string;
   amountCents: number;
   notes: string | null;
+  splitAmountCents?: number | null;
 }
 
 export interface VariableCostDetail {

@@ -153,6 +153,8 @@ pub struct VariableCostCategorizedTransaction {
   pub title: String,
   pub amount_cents: i64,
   pub notes: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub split_amount_cents: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

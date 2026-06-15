@@ -24,6 +24,7 @@ import {
   expenseCategoryFromLedger,
   expenseCategoryTypeFromValue,
   ledgerCategoryIds,
+  type ExpenseCategoryType,
   type ExpenseCategoryValue,
 } from './ExpenseCategoryField';
 import { formatDisplayDate, isoToday } from '../../lib/date';
@@ -428,6 +429,8 @@ export function TransactionEntryModal({
             toAccountId,
             title: title.trim() || t('accounts.defaultTransferTitle'),
             notes: description.trim() ? description : null,
+            icon,
+            color,
           };
           if (row.kind === 'transfer') {
             await updateTransfer(transferInput);
@@ -914,21 +917,39 @@ export function TransactionEntryModal({
               <>
                 <label>
                   {t('common.category')}
-                  <ExpenseCategoryField
-                    variableCosts={variableCosts}
-                    fixedCosts={fixedCosts}
-                    buyItems={buyItems}
-                    buyItemGroups={buyItemGroups}
-                    value={expenseCategory}
-                    onChange={(value) => {
-                      setExpenseCategory(value);
-                      if (value.kind !== 'none' && value.kind !== 'variable') {
+                  <select
+                    value={
+                      hasVariableCostSplitDraft() ? 'variable' : expenseCategoryTypeFromValue(expenseCategory)
+                    }
+                    onChange={(e) => {
+                      const next = e.target.value as ExpenseCategoryType;
+                      if (next === 'variable') {
+                        setExpenseCategory({ kind: 'variable', id: null });
+                        setVariableCostSplitDraft([]);
+                        if (amount.trim()) {
+                          setVariableCostSplitModalOpen(true);
+                        }
+                      } else if (next === 'none') {
+                        setExpenseCategory({ kind: 'none', id: null });
+                        setVariableCostSplitDraft([]);
+                      } else if (next === 'fixed' || next === 'buy') {
+                        setExpenseCategory({ kind: next, id: null });
                         setVariableCostSplitDraft([]);
                       }
                     }}
                     disabled={hasVariableCostSplitDraft()}
-                    inputActions={
-                      expenseCategoryTypeFromValue(expenseCategory) === 'variable' || hasVariableCostSplitDraft() ? (
+                  >
+                    <option value="none">{t('transactions.categoryType.none')}</option>
+                    <option value="variable">{t('transactions.categoryType.variable')}</option>
+                    <option value="fixed">{t('transactions.categoryType.fixed')}</option>
+                    <option value="buy">{t('transactions.categoryType.buy')}</option>
+                  </select>
+                  {expenseCategoryTypeFromValue(expenseCategory) === 'variable' || hasVariableCostSplitDraft() ? (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: 13, color: ui.colors.textMuted }}>
+                          {t('transactions.variableCostSplitOnlyHint')}
+                        </span>
                         <button
                           type="button"
                           className="fh-btn ghost"
@@ -937,15 +958,30 @@ export function TransactionEntryModal({
                         >
                           {t('transactions.variableCostSplitAction')}
                         </button>
-                      ) : null
-                    }
-                  />
-                  {hasVariableCostSplitDraft() ? (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 13, color: ui.colors.textMuted }}>{variableCostSplitSummary()}</span>
-                      <button type="button" className="fh-btn ghost" onClick={() => setVariableCostSplitDraft([])}>
-                        {t('transactions.variableCostSplitClear')}
-                      </button>
+                      </div>
+                      {hasVariableCostSplitDraft() ? (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 13, color: ui.colors.textMuted }}>{variableCostSplitSummary()}</span>
+                          <button type="button" className="fh-btn ghost" onClick={() => setVariableCostSplitDraft([])}>
+                            {t('transactions.variableCostSplitClear')}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : expenseCategoryTypeFromValue(expenseCategory) !== 'none' ? (
+                    <div style={{ marginTop: 8 }}>
+                      <ExpenseCategoryField
+                        variableCosts={variableCosts}
+                        fixedCosts={fixedCosts}
+                        buyItems={buyItems}
+                        buyItemGroups={buyItemGroups}
+                        value={expenseCategory}
+                        lockedCategoryType={expenseCategoryTypeFromValue(expenseCategory)}
+                        onChange={(value) => {
+                          setExpenseCategory(value);
+                        }}
+                        disabled={hasVariableCostSplitDraft()}
+                      />
                     </div>
                   ) : null}
                 </label>

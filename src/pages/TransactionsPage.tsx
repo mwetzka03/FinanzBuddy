@@ -26,7 +26,7 @@ import {
 } from '../lib/transactionList';
 import {
   deleteBuyItem,
-  deleteFixedCost,
+  dismissFixedCostOccurrence,
   deleteIncomeForecast,
   deleteLedgerTransaction,
   deleteTransfer,
@@ -40,6 +40,7 @@ import {
   listLedgerTransactions,
   listVariableCosts,
   previewFixedCost,
+  listFixedCostDismissedOccurrences,
   previewIncomeForecast,
 } from '../tauri/api';
 import { stockAccentColor } from '../lib/tableAccent';
@@ -95,6 +96,7 @@ export function TransactionsPage() {
   const [ledgerRows, setLedgerRows] = useState<LedgerTransaction[]>([]);
   const [nextDatesByForecastId, setNextDatesByForecastId] = useState<Map<string, IsoDate[]>>(new Map());
   const [nextDatesByFixedCostId, setNextDatesByFixedCostId] = useState<Map<string, IsoDate[]>>(new Map());
+  const [dismissedFixedCostOccurrences, setDismissedFixedCostOccurrences] = useState<Set<string>>(new Set());
   const [primaryIncomeForecastId, setPrimaryIncomeForecastId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -142,6 +144,7 @@ export function TransactionsPage() {
         buyItemGroupById: buyItemGroupStyleMap,
         nextDatesByForecastId,
         nextDatesByFixedCostId,
+        dismissedFixedCostOccurrences,
       }),
     [
       ledgerRows,
@@ -159,6 +162,7 @@ export function TransactionsPage() {
       buyItemGroupStyleMap,
       nextDatesByForecastId,
       nextDatesByFixedCostId,
+      dismissedFixedCostOccurrences,
     ],
   );
 
@@ -208,7 +212,7 @@ export function TransactionsPage() {
             start: monthStartDate(effectiveMonthFilter),
             end: monthEndDate(effectiveMonthFilter),
           };
-    const [ledger, forecasts, fixed, variables, buys, buyGroups, pools] = await Promise.all([
+    const [ledger, forecasts, fixed, variables, buys, buyGroups, pools, dismissed] = await Promise.all([
       listLedgerTransactions(ledgerOpts),
       listIncomeForecasts(),
       listFixedCosts(),
@@ -216,6 +220,7 @@ export function TransactionsPage() {
       listBuyItems(),
       listBuyItemGroups(),
       listBudgetPools(),
+      listFixedCostDismissedOccurrences(),
     ]);
     setLedgerRows(ledger);
     setIncomeForecasts(forecasts);
@@ -224,6 +229,9 @@ export function TransactionsPage() {
     setBuyItems(buys);
     setBuyItemGroups(buyGroups);
     setBudgetPools(pools);
+    setDismissedFixedCostOccurrences(
+      new Set(dismissed.map((row) => `${row.fixedCostId}:${row.occurrenceDate}`)),
+    );
 
     const forecastDates = new Map<string, IsoDate[]>();
     await Promise.all(
@@ -285,8 +293,11 @@ export function TransactionsPage() {
       }
     } else if (entry.source === 'income_forecast' && entry.incomeForecast) {
       await deleteIncomeForecast(entry.incomeForecast.id);
-    } else if (entry.source === 'expense_forecast' && entry.fixedCost) {
-      await deleteFixedCost(entry.fixedCost.id);
+    } else if (entry.source === 'expense_forecast' && entry.fixedCost && entry.date) {
+      await dismissFixedCostOccurrence({
+        fixedCostId: entry.fixedCost.id,
+        occurrenceDate: entry.date,
+      });
     } else if (entry.source === 'buy_forecast' && entry.buyItem) {
       await deleteBuyItem(entry.buyItem.id);
     }

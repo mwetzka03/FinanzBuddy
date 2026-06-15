@@ -450,11 +450,27 @@ fn resolve_lsx_yahoo_symbol(input: &str) -> AppResult<String> {
   if trimmed.is_empty() {
     return Err(AppError::Invalid("ISIN/Kürzel erforderlich".into()));
   }
-  if trimmed.contains('.') {
+  if trimmed.contains('.') || trimmed.contains('-') {
     return Ok(trimmed);
   }
   if is_isin(&trimmed) {
     return resolve_isin_to_yahoo_symbol(&trimmed);
+  }
+  const CRYPTO_SYMBOLS: &[(&str, &str)] = &[
+    ("BTC", "BTC-EUR"),
+    ("ETH", "ETH-EUR"),
+    ("XRP", "XRP-EUR"),
+    ("SOL", "SOL-EUR"),
+    ("ADA", "ADA-EUR"),
+    ("DOT", "DOT-EUR"),
+    ("LTC", "LTC-EUR"),
+    ("BCH", "BCH-EUR"),
+    ("DOGE", "DOGE-EUR"),
+  ];
+  for (sym, yahoo) in CRYPTO_SYMBOLS {
+    if trimmed == *sym {
+      return Ok(yahoo.to_string());
+    }
   }
   Ok(format!("{trimmed}.DE"))
 }
@@ -471,6 +487,16 @@ fn resolve_isin_to_yahoo_symbol(isin: &str) -> AppResult<String> {
     let exchange = q.get("exchange").and_then(|v| v.as_str()).unwrap_or("");
     if exchange.eq_ignore_ascii_case("GER") || exchange.contains("XETRA") {
       return Ok(symbol.to_string());
+    }
+  }
+
+  for q in &equity {
+    let qt = q.get("quoteType").and_then(|v| v.as_str()).unwrap_or("");
+    if qt.eq_ignore_ascii_case("CRYPTOCURRENCY") {
+      let symbol = q.get("symbol").and_then(|v| v.as_str()).unwrap_or("");
+      if !symbol.is_empty() {
+        return Ok(symbol.to_string());
+      }
     }
   }
 
@@ -1363,7 +1389,6 @@ fn create_stock_holding_inner(state: State<'_, AppState>, input: CreateStockHold
       params![holding_id, input.name.trim()],
     )?;
     drop(conn);
-    let _ = crate::portfolio_cache::refresh_now(&state);
     return Ok(holding_id);
   }
 
@@ -1395,7 +1420,6 @@ fn create_stock_holding_inner(state: State<'_, AppState>, input: CreateStockHold
     )?;
   }
   drop(conn);
-  let _ = crate::portfolio_cache::refresh_now(&state);
   Ok(id)
 }
 
@@ -1543,13 +1567,6 @@ fn apply_fifo_sale(conn: &rusqlite::Connection, holding_id: &str, mut shares_to_
         "UPDATE stock_lots SET shares = ?2 WHERE id = ?1",
         params![lot.id, remaining],
       )?;
-      if !lot.is_transfer {
-        if let Some(payment_id) = lot.payment_account_id.as_deref() {
-          let holding = load_holding(conn, holding_id)?;
-          update_lot_ledger(conn, &lot.id, &lot.buy_date, lot.buy_price_cents, remaining, &holding.name)?;
-          let _ = payment_id;
-        }
-      }
       shares_to_sell = 0.0;
     }
   }
@@ -1669,7 +1686,6 @@ fn sell_stock_holding_inner(state: State<'_, AppState>, input: SellStockHoldingI
     &payment_account_id,
   )?;
   drop(conn);
-  let _ = crate::portfolio_cache::refresh_now(&state);
   let remaining: i64 = {
     let conn = state.conn.lock().unwrap();
     conn.query_row(

@@ -73,7 +73,7 @@ export function BudgetPoolSplitModal({
   }
 
   return (
-    <Modal open={open} wide title={t('transactions.budgetPoolSplitTitle')} onClose={onClose}>
+    <Modal open={open} nested title={t('transactions.budgetPoolSplitTitle')} onClose={onClose}>
       <div className="fh-form">
         <p className="fh-form-hint" style={{ marginTop: 0 }}>
           {t('transactions.budgetPoolSplitHint', { total: formatEurFromCents(txAmountCents) })}

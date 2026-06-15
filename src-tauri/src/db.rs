@@ -316,7 +316,35 @@ CREATE INDEX IF NOT EXISTS idx_stock_lots_holding ON stock_lots(holding_id);
   migrate_budget_pools(conn)?;
   migrate_budget_pools_v2(conn)?;
   migrate_budget_pools_v3(conn)?;
+  migrate_fixed_cost_dismissals(conn)?;
 
+  Ok(())
+}
+
+fn migrate_fixed_cost_dismissals(conn: &Connection) -> AppResult<()> {
+  let done: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM app_settings WHERE key = 'fixed_cost_dismissals_v1'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap_or(0);
+  if done > 0 {
+    return Ok(());
+  }
+  conn.execute_batch(
+    r#"
+    CREATE TABLE IF NOT EXISTS fixed_cost_dismissed_occurrences (
+      fixed_cost_id TEXT NOT NULL,
+      occurrence_date TEXT NOT NULL,
+      PRIMARY KEY (fixed_cost_id, occurrence_date)
+    );
+    "#,
+  )?;
+  conn.execute(
+    "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('fixed_cost_dismissals_v1', '1')",
+    [],
+  )?;
   Ok(())
 }
 

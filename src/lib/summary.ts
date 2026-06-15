@@ -83,6 +83,22 @@ export function dashboardEventSubtotalContribution(
   return contribution;
 }
 
+export function recomputeDashboardRunningSubtotals<T extends DashboardEventRow>(
+  rows: T[],
+  filter: DashboardEventFilter,
+  accountFilter?: string | null,
+  isStockDepot?: boolean,
+): T[] {
+  let running = 0;
+  return rows.map((row) => {
+    const contribution = dashboardEventSubtotalContribution(row.event, filter, accountFilter, isStockDepot);
+    if (contribution !== null) {
+      running += subtotalStep(filter, contribution);
+    }
+    return { ...row, runningSubtotalCents: running };
+  });
+}
+
 export function dashboardEventsWithRunningSubtotals(
   events: TimelineEvent[],
   filter: DashboardEventFilter,
@@ -90,14 +106,12 @@ export function dashboardEventsWithRunningSubtotals(
   isStockDepot?: boolean,
 ): DashboardEventRow[] {
   const sorted = sortDashboardEventsChronologically(events);
-  let running = 0;
-  return sorted.map((event) => {
-    const contribution = dashboardEventSubtotalContribution(event, filter, accountFilter, isStockDepot);
-    if (contribution !== null) {
-      running += subtotalStep(filter, contribution);
-    }
-    return { event, runningSubtotalCents: running };
-  });
+  return recomputeDashboardRunningSubtotals(
+    sorted.map((event) => ({ event, runningSubtotalCents: 0 })),
+    filter,
+    accountFilter,
+    isStockDepot,
+  );
 }
 
 function isExpenseEvent(ev: TimelineEvent, savingsPot?: boolean, accountId?: string | null): boolean {

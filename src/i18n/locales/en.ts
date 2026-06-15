@@ -299,6 +299,7 @@ export const en: TranslationDict = {
     variableCostSplitEmpty: 'Create variable costs first.',
     variableCostSplitSummary: 'Split: {{count}} lines',
     variableCostSplitAction: 'Split…',
+    variableCostSplitOnlyHint: 'Split the amount across variable costs (no single assignment).',
     variableCostSplitClear: 'Clear split',
     oneTimeEntry: 'One-time entry',
     oneTimeEntryHint: 'No rhythm or due date — appears as a planned purchase, not a fixed cost.',
@@ -375,16 +376,32 @@ export const en: TranslationDict = {
   variableCosts: {
     title: 'Variable costs',
     intro:
-      'Recurring monthly costs as budget (forecast). Actual values come from categorised transactions.',
+      'Recurring costs as budget (forecast) per period. Actual values come from categorised transactions.',
     newEntry: 'New entry',
     editEntry: 'Edit entry',
     formHint:
-      'The forecast is the monthly budget. Actual values come from transactions or manual entry.',
+      'The forecast is the budget for each period. Actual values come from transactions or manual entry.',
     namePlaceholder: 'Fuel, restaurant…',
-    listHint: 'Click the name for monthly overview, transactions and manual actual entry.',
+    listHint: 'Click the name for transactions, actual value and period navigation.',
     forecast: 'Forecast',
     actual: 'Actual',
     spent: 'Booked',
+    notFound: 'Entry not found.',
+    detailIntro: 'Budget: {{budget}} per period ({{mode}}).',
+    periodSalary: 'Salary period',
+    periodCalendar: 'Calendar month',
+    periodLabel: 'Period',
+    currentPeriodSection: 'Current period ({{period}})',
+    openPeriodHint: 'Open period: categorised transactions ({{spent}}) count towards actual.',
+    periodTransactionsTitle: 'Transactions in period',
+    noPeriodTransactions: 'No assigned transactions in this period.',
+    transactionsSum: 'Total',
+    manualActualTitle: 'Manual actual value',
+    manualActualHint:
+      'Optional fixed amount for the period. Leave empty and save to use the transaction total as actual.',
+    manualActualPlaceholder: 'Empty = transaction total',
+    manualActualFallback: 'Without input, the transaction total applies: {{sum}}',
+    manualActualActive: 'Manually booked: {{amount}}',
   },
 
   budgetPools: {

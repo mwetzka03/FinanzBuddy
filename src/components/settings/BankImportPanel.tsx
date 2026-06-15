@@ -63,9 +63,8 @@ export function BankImportPanel({ embedded = false }: { embedded?: boolean }) {
       .then((rows) => {
         const ledgerAccounts = rows.filter(isBankImportAccount);
         setAccounts(ledgerAccounts);
-        if (ledgerAccounts.length > 0) {
-          setAccountId((current) => current || ledgerAccounts[0].id);
-        }
+        const mainId = ledgerAccounts.find((a) => a.isMain)?.id ?? ledgerAccounts[0]?.id ?? '';
+        setAccountId((current) => current || mainId);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
     getDashboardSettings()

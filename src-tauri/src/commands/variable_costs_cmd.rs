@@ -116,18 +116,25 @@ fn get_variable_cost_detail_inner(state: State<'_, AppState>, id: String) -> App
     .collect::<Result<Vec<_>, _>>()?;
 
   let mut tx_stmt = conn.prepare(
-    "SELECT id, date, title, amount_cents, notes FROM ledger_transactions
-     WHERE variable_cost_id = ?1
-     ORDER BY date ASC, created_at ASC",
+    "SELECT l.id, l.date, l.title, l.amount_cents, l.notes,
+            s.amount_cents AS split_amount_cents
+     FROM ledger_transactions l
+     LEFT JOIN ledger_variable_cost_splits s
+       ON s.ledger_transaction_id = l.id AND s.variable_cost_id = ?1
+     WHERE l.variable_cost_id = ?1
+        OR s.variable_cost_id = ?1
+     ORDER BY l.date ASC, l.created_at ASC",
   )?;
   let transactions = tx_stmt
     .query_map(params![id.clone()], |r| {
+      let split_amount: Option<i64> = r.get(5)?;
       Ok(crate::models::VariableCostCategorizedTransaction {
         id: Uuid::parse_str(r.get::<_, String>(0)?.as_str()).unwrap(),
         date: r.get(1)?,
         title: r.get(2)?,
         amount_cents: r.get(3)?,
         notes: r.get(4)?,
+        split_amount_cents: split_amount,
       })
     })?
     .collect::<Result<Vec<_>, _>>()?;

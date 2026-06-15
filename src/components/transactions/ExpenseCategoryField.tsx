@@ -28,6 +28,10 @@ type ExpenseCategoryFieldProps = {
   onChange: (value: ExpenseCategoryValue) => void;
   disabled?: boolean;
   inputActions?: ReactNode;
+  /** Bei variable: kein Suchfeld — nur Aufteilung über inputActions. */
+  variableSplitOnly?: boolean;
+  /** Typ vorgegeben — kein Typ-Dropdown (nur Suche). */
+  lockedCategoryType?: ExpenseCategoryType;
 };
 
 export function expenseCategoryFromLedger(
@@ -73,16 +77,24 @@ export function ExpenseCategoryField({
   onChange,
   disabled,
   inputActions,
+  variableSplitOnly = false,
+  lockedCategoryType,
 }: ExpenseCategoryFieldProps) {
   const { t } = useLocale();
   const ui = useUi();
-  const [categoryType, setCategoryType] = useState<ExpenseCategoryType>(() => expenseCategoryTypeFromValue(value));
+  const [categoryType, setCategoryType] = useState<ExpenseCategoryType>(
+    () => lockedCategoryType ?? expenseCategoryTypeFromValue(value),
+  );
   const [query, setQuery] = useState('');
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
 
   useEffect(() => {
+    if (lockedCategoryType) {
+      setCategoryType(lockedCategoryType);
+      return;
+    }
     setCategoryType(expenseCategoryTypeFromValue(value));
-  }, [value.kind, value.id]);
+  }, [value.kind, value.id, lockedCategoryType]);
 
   const selectableBuyItems = useMemo(() => {
     const parked = buyItems.filter((b) => b.status === 'parked' && !b.groupId);
@@ -188,6 +200,7 @@ export function ExpenseCategoryField({
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
+      {!lockedCategoryType ? (
       <select
         value={categoryType}
         onChange={(e) => onCategoryTypeChange(e.target.value as ExpenseCategoryType)}
@@ -198,7 +211,14 @@ export function ExpenseCategoryField({
         <option value="fixed">{t('transactions.categoryType.fixed')}</option>
         <option value="buy">{t('transactions.categoryType.buy')}</option>
       </select>
+      ) : null}
       {categoryType !== 'none' ? (
+        categoryType === 'variable' && variableSplitOnly ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: ui.colors.textMuted }}>{t('transactions.variableCostSplitOnlyHint')}</span>
+            {inputActions}
+          </div>
+        ) : (
         <div style={{ position: 'relative' }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
@@ -253,6 +273,7 @@ export function ExpenseCategoryField({
             </div>
           ) : null}
         </div>
+        )
       ) : null}
     </div>
   );

@@ -39,6 +39,9 @@ fn expense_event_display(
     }
   }
   if let Some(vc_id) = variable_cost_id {
+    if title.contains(" / ") || title.contains(" · ") {
+      return Ok((title.to_string(), notes.map(str::to_string)));
+    }
     let name: Option<String> = conn
       .query_row("SELECT name FROM variable_costs WHERE id = ?1", params![vc_id], |r| r.get(0))
       .optional()?;

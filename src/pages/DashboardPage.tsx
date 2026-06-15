@@ -25,6 +25,7 @@ import { formatBalanceEurFromCents, formatEurFromCents, formatExpenseEurFromCent
 import {
   dashboardEventsForMonth,
   DASHBOARD_MIN_MONTH_FALLBACK,
+  recomputeDashboardRunningSubtotals,
   dashboardEventsWithRunningSubtotals,
   filterDashboardEvents,
   isCurrentDashboardPeriod,
@@ -287,17 +288,17 @@ function EventsTable({
       .toLowerCase();
     return haystack.includes(query);
   });
-  const sortedRows = useMemo(
-    () =>
-      sortByState(searchedRows, sort, {
-        date: (r) => r.event.date,
-        account: (r) => r.event.accountName ?? '',
-        title: (r) => r.event.title,
-        amount: (r) => r.event.amountCents,
-        subtotal: (r) => r.runningSubtotalCents,
-      }),
-    [searchedRows, sort],
-  );
+  const sortedRows = useMemo(() => {
+    const sorted = sortByState(searchedRows, sort, {
+      date: (r) => r.event.date,
+      account: (r) => r.event.accountName ?? '',
+      title: (r) => r.event.title,
+      amount: (r) => r.event.amountCents,
+      subtotal: (r) => r.runningSubtotalCents,
+    });
+    if (!sort) return sorted;
+    return recomputeDashboardRunningSubtotals(sorted, filter, accountFilter, isStockDepot);
+  }, [searchedRows, sort, filter, accountFilter, isStockDepot]);
   const pagination = useTablePagination(sortedRows);
   const tableCols = '110px 140px 1fr 120px 120px';
 
